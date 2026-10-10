@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: nacos-unn-election-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: COOKIE_SAMESITE
+        value: None
+      - key: CORS_ORIGIN
+        value: https://election-site-zeta.vercel.app,http://localhost:3000

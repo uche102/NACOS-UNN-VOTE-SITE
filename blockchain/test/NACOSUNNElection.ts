@@ -1,0 +1,204 @@
+import { expect } from "chai";
+import { network } from "hardhat";
+import { ethers } from "ethers";
+
+describe("NACOSUNNElection", function () {
+  async function deployElection() {
+    const { ethers: hardhatEthers } = await network.connect();
+
+    const [authority, otherAccount] =
+      await hardhatEthers.getSigners();
+
+    const NACOSUNNElection =
+      await hardhatEthers.getContractFactory("NACOSUNNElection");
+
+    const election = await NACOSUNNElection.deploy();
+
+    await election.waitForDeployment();
+
+    return {
+      election,
+      authority,
+      otherAccount,
+    };
+  }
+
+  function hashId(value: string): string {
+    return ethers.id(value);
+  }
+
+  describe("Deployment", function () {
+    it("should set the deployer as the election authority", async function () {
+      const { election, authority } = await deployElection();
+
+      expect(await election.electionAuthority()).to.equal(
+        authority.address
+      );
+    });
+
+    it("should start with the election active", async function () {
+      const { election } = await deployElection();
+
+      expect(await election.electionActive()).to.equal(true);
+    });
+  });
+
+  describe("Ballot recording", function () {
+    it("should record a voter's ballot and return a transaction hash", async function () {
+      const { election } = await deployElection();
+
+      const voterHash = hashId("NACOS-VOTER-001");
+
+      const postId = hashId("post-president");
+      const candidateId = hashId("candidate-president-001");
+
+      const tx = await election.recordBallot(
+        voterHash,
+        [postId],
+        [candidateId]
+      );
+
+      // A blockchain transaction must have a transaction hash.
+      expect(tx.hash).to.be.a("string");
+      expect(tx.hash).to.match(/^0x[a-fA-F0-9]{64}$/);
+
+      // Wait for blockchain confirmation.
+      const receipt = await tx.wait();
+
+      expect(receipt).to.not.equal(null);
+
+      // Verify that the voter is now marked as having voted.
+      expect(await election.hasVoted(voterHash)).to.equal(true);
+
+      // Verify that the vote count increased.
+      expect(
+        await election.getVoteCount(postId, candidateId)
+      ).to.equal(1);
+    });
+
+    it("should support multiple selections in one ballot", async function () {
+      const { election } = await deployElection();
+
+      const voterHash = hashId("NACOS-200L-VOTER-001");
+
+      const horPostId = hashId("post-hor");
+
+      const candidate1 = hashId("candidate-hor-001");
+      const candidate2 = hashId("candidate-hor-002");
+      const candidate3 = hashId("candidate-hor-003");
+      const candidate4 = hashId("candidate-hor-004");
+      const candidate5 = hashId("candidate-hor-005");
+
+      const tx = await election.recordBallot(
+        voterHash,
+        [
+          horPostId,
+          horPostId,
+          horPostId,
+          horPostId,
+          horPostId,
+        ],
+        [
+          candidate1,
+          candidate2,
+          candidate3,
+          candidate4,
+          candidate5,
+        ]
+      );
+
+      expect(tx.hash).to.match(/^0x[a-fA-F0-9]{64}$/);
+
+      await tx.wait();
+
+      expect(
+        await election.getVoteCount(horPostId, candidate1)
+      ).to.equal(1);
+
+      expect(
+        await election.getVoteCount(horPostId, candidate2)
+      ).to.equal(1);
+
+      expect(
+        await election.getVoteCount(horPostId, candidate3)
+      ).to.equal(1);
+
+      expect(
+        await election.getVoteCount(horPostId, candidate4)
+      ).to.equal(1);
+
+      expect(
+        await election.getVoteCount(horPostId, candidate5)
+      ).to.equal(1);
+    });
+
+    it("should prevent the same voter from voting twice", async function () {
+      const { election } = await deployElection();
+
+      const voterHash = hashId("NACOS-VOTER-002");
+
+      const postId = hashId("post-president");
+      const candidateId = hashId("candidate-president-002");
+
+      await election.recordBallot(
+        voterHash,
+        [postId],
+        [candidateId]
+      );
+
+      await expect(
+        election.recordBallot(
+          voterHash,
+          [postId],
+          [candidateId]
+        )
+      ).to.be.revertedWith("Voter has already voted");
+    });
+  });
+
+  describe("Election control", function () {
+    it("should allow the authority to stop the election", async function () {
+      const { election } = await deployElection();
+
+      await election.setElectionActive(false);
+
+      expect(await election.electionActive()).to.equal(false);
+    });
+
+    it("should reject ballots when the election is inactive", async function () {
+      const { election } = await deployElection();
+
+      await election.setElectionActive(false);
+
+      const voterHash = hashId("NACOS-VOTER-003");
+      const postId = hashId("post-president");
+      const candidateId = hashId("candidate-president-003");
+
+      await expect(
+        election.recordBallot(
+          voterHash,
+          [postId],
+          [candidateId]
+        )
+      ).to.be.revertedWith("Election is not active");
+    });
+
+    it("should reject unauthorized ballot submissions", async function () {
+      const { election, otherAccount } = await deployElection();
+
+      const voterHash = hashId("NACOS-VOTER-004");
+      const postId = hashId("post-president");
+      const candidateId = hashId("candidate-president-004");
+
+      await expect(
+        election
+          .connect(otherAccount)
+          .recordBallot(
+            voterHash,
+            [postId],
+            [candidateId]
+          )
+      ).to.be.revertedWith("Not authorized");
+    });
+  });
+});

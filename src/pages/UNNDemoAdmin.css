@@ -1,0 +1,161 @@
+.unn-admin {
+  --unn-ink: #182b25;
+  --unn-muted: #75827c;
+  --unn-line: #e4ebe6;
+  --unn-green: #176b4d;
+  --unn-pale: #edf7f0;
+  min-height: 100vh;
+  display: flex;
+  background: #f6f8f6;
+  color: var(--unn-ink);
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+}
+
+.unn-admin * { box-sizing: border-box; }
+
+.unn-sidebar {
+  width: 245px;
+  flex: 0 0 245px;
+  min-height: 100vh;
+  padding: 26px 17px;
+  background: #fff;
+  border-right: 1px solid var(--unn-line);
+  display: flex;
+  flex-direction: column;
+}
+
+.unn-brand { display: flex; align-items: center; gap: 12px; padding: 0 7px 32px; }
+.unn-brand-mark {
+  width: 43px; height: 43px; display: grid; place-items: center;
+  background: var(--unn-green); color: #fff; border-radius: 13px;
+  font-weight: 900; font-size: 22px;
+}
+.unn-brand strong, .unn-brand span { display: block; }
+.unn-brand strong { font-size: 14px; letter-spacing: .3px; }
+.unn-brand span { margin-top: 4px; font-size: 12px; color: var(--unn-muted); }
+
+.unn-sidebar-label {
+  padding: 0 10px; margin-bottom: 12px; font-size: 10px;
+  font-weight: 800; letter-spacing: 1.4px; color: #9aa69f;
+}
+.unn-nav { display: grid; gap: 7px; }
+.unn-nav button {
+  border: 0; background: transparent; color: #64736b; text-align: left;
+  min-height: 45px; border-radius: 9px; padding: 0 12px;
+  display: flex; align-items: center; gap: 11px; font-size: 13px;
+  font-weight: 650; cursor: pointer;
+}
+.unn-nav button:hover, .unn-nav button.selected { background: var(--unn-pale); color: var(--unn-green); }
+.unn-nav-dot { width: 7px; height: 7px; border: 2px solid currentColor; border-radius: 3px; }
+.unn-sidebar-bottom { margin-top: auto; padding: 18px 7px 0; }
+.unn-demo-badge {
+  display: inline-block; border-radius: 5px; padding: 5px 8px;
+  background: #fff2d9; color: #885c0c; font-size: 10px; font-weight: 900;
+  letter-spacing: .8px;
+}
+.unn-sidebar-bottom p { color: var(--unn-muted); font-size: 11px; line-height: 1.6; }
+
+.unn-main { min-width: 0; flex: 1; }
+.unn-topbar {
+  min-height: 100px; background: #fff; border-bottom: 1px solid var(--unn-line);
+  padding: 22px 34px; display: flex; align-items: center;
+  justify-content: space-between; gap: 16px;
+}
+.unn-breadcrumb { color: var(--unn-muted); font-size: 11px; margin-bottom: 7px; }
+.unn-topbar h1 { margin: 0; font-size: 25px; letter-spacing: -.7px; }
+.unn-content { max-width: 1450px; margin: auto; padding: 29px 34px 50px; }
+.unn-welcome {
+  display: flex; justify-content: space-between; align-items: center; gap: 20px;
+  padding: 30px; border-radius: 15px; color: #fff;
+  background: linear-gradient(120deg, #155c43, #24805b);
+}
+.unn-eyebrow { font-size: 10px; letter-spacing: 1.5px; font-weight: 850; opacity: .8; }
+.unn-welcome h2 { max-width: 540px; margin: 12px 0 9px; font-size: clamp(23px, 3vw, 31px); letter-spacing: -.8px; }
+.unn-welcome p { max-width: 580px; margin: 0; color: #e0f0e7; font-size: 13px; line-height: 1.7; }
+.unn-welcome-icon {
+  width: 64px; height: 64px; flex: 0 0 64px; display: grid; place-items: center;
+  border: 1px solid #ffffff65; border-radius: 50%; font-size: 30px;
+  background: #ffffff12;
+}
+
+.unn-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 15px; margin: 20px 0; }
+.unn-stat-card { padding: 20px; background: #fff; border: 1px solid var(--unn-line); border-radius: 12px; }
+.unn-stat-card > span, .unn-stat-card small { display: block; color: var(--unn-muted); font-size: 12px; }
+.unn-stat-card strong { display: block; margin: 13px 0 7px; font-size: 28px; letter-spacing: -.6px; }
+.unn-stat-card small { font-size: 11px; }
+.unn-stat-card .unn-pending { font-size: 17px; color: #a56b13; letter-spacing: 0; }
+
+.unn-panel { margin-top: 19px; padding: 23px; border: 1px solid var(--unn-line); border-radius: 12px; background: #fff; }
+.unn-panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
+.unn-panel h3 { margin: 0; font-size: 16px; }
+.unn-panel-heading p, .unn-muted { margin: 6px 0 0; color: var(--unn-muted); font-size: 12px; line-height: 1.7; }
+.unn-quick-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.unn-quick-actions button, .unn-secondary-button {
+  min-height: 39px; border: 1px solid var(--unn-line); border-radius: 8px;
+  padding: 0 13px; color: var(--unn-ink); background: #fff;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.unn-quick-actions button:hover, .unn-secondary-button:hover { border-color: var(--unn-green); color: var(--unn-green); }
+.unn-office-list { display: grid; }
+.unn-office-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid #edf1ee; font-size: 12px; }
+.unn-office-row:last-child { border-bottom: 0; }
+.unn-office-row strong { text-align: right; font-size: 11px; color: #64736b; }
+
+.unn-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: end; }
+.unn-form label { display: grid; gap: 8px; font-size: 12px; font-weight: 750; color: #3d5147; }
+.unn-form input, .unn-form select, .unn-search {
+  width: 100%; min-width: 0; min-height: 43px; padding: 0 12px;
+  border: 1px solid #dce5de; border-radius: 8px; background: #fff;
+  color: var(--unn-ink); font: inherit; font-size: 12px; outline: none;
+}
+.unn-form input:focus, .unn-form select:focus, .unn-search:focus { border-color: var(--unn-green); box-shadow: 0 0 0 3px #176b4d15; }
+.unn-primary-button {
+  min-height: 43px; padding: 0 16px; border: 0; border-radius: 8px;
+  background: var(--unn-green); color: #fff; font-size: 12px; font-weight: 800; cursor: pointer;
+}
+.unn-primary-button:hover { background: #10553d; }
+.unn-search { max-width: 230px; }
+.unn-table-wrap { overflow-x: auto; }
+.unn-table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
+.unn-table th { background: #f7f9f7; color: #748179; font-size: 10px; text-transform: uppercase; letter-spacing: .7px; }
+.unn-table th, .unn-table td { padding: 13px 12px; border-bottom: 1px solid #edf1ee; font-size: 12px; }
+.unn-table td { color: #43554b; }
+.unn-status { display: inline-flex; align-items: center; border-radius: 20px; padding: 5px 8px; font-size: 10px; font-weight: 800; }
+.unn-status.active { background: #e7f7ed; color: #176b4d; }
+.unn-status.inactive { background: #f1f2f2; color: #7a8580; }
+.unn-row-button { border: 0; background: transparent; color: var(--unn-green); font-size: 11px; font-weight: 800; cursor: pointer; }
+.unn-candidate-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.unn-candidate-card { display: flex; align-items: flex-start; gap: 12px; padding: 15px; border: 1px solid var(--unn-line); border-radius: 10px; }
+.unn-avatar { flex: 0 0 42px; width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: var(--unn-pale); color: var(--unn-green); font-size: 13px; font-weight: 900; }
+.unn-candidate-info { flex: 1; min-width: 0; }
+.unn-candidate-office { font-size: 10px; font-weight: 800; color: var(--unn-green); }
+.unn-candidate-info h4 { margin: 6px 0; font-size: 13px; }
+.unn-candidate-info p { margin: 0 0 10px; color: var(--unn-muted); font-size: 11px; line-height: 1.6; }
+.unn-notice { padding: 12px 15px; margin-bottom: 16px; border-radius: 8px; background: #e8f6ed; color: #176b4d; font-size: 12px; font-weight: 700; }
+
+@media (max-width: 1050px) {
+  .unn-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .unn-sidebar { width: 210px; flex-basis: 210px; }
+  .unn-content { padding: 22px; }
+  .unn-topbar { padding: 20px 22px; }
+}
+@media (max-width: 720px) {
+  .unn-admin { display: block; }
+  .unn-sidebar { width: 100%; min-height: auto; padding: 15px; border-right: 0; border-bottom: 1px solid var(--unn-line); }
+  .unn-brand { padding-bottom: 15px; }
+  .unn-sidebar-label, .unn-sidebar-bottom { display: none; }
+  .unn-nav { display: flex; overflow-x: auto; }
+  .unn-nav button { flex: 0 0 auto; min-height: 39px; }
+  .unn-topbar { min-height: auto; padding: 18px; }
+  .unn-topbar h1 { font-size: 21px; }
+  .unn-content { padding: 15px; }
+  .unn-welcome { padding: 22px; }
+  .unn-welcome-icon { display: none; }
+  .unn-stat-grid { gap: 10px; }
+  .unn-stat-card { padding: 15px; }
+  .unn-stat-card strong { font-size: 23px; }
+  .unn-panel { padding: 16px; }
+  .unn-form, .unn-candidate-grid { grid-template-columns: 1fr; }
+  .unn-panel-heading { align-items: flex-start; flex-direction: column; }
+  .unn-search { max-width: none; }
+}
