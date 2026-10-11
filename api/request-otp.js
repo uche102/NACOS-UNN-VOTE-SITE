@@ -7,7 +7,7 @@ import {
   sendOtpEmail,
   storeOtp,
 } from "./_lib/otp.js";
-import { getSingle, supabaseRequest } from "./_lib/supabase.js";
+import { claimOtpRequest, getSingle } from "./_lib/supabase.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return methodNotAllowed(res);
@@ -37,49 +37,36 @@ export default async function handler(req, res) {
       return json(res, 409, { error: "This voter has already voted." });
     }
 
-    const claimedAt = new Date().toISOString();
-    await supabaseRequest("voters", {
-      method: "PATCH",
-      query: {
-        reg_no: `eq.${regNoValue}`,
-      },
-      body: { otp_claimed_at: claimedAt },
-    });
+    const claimGranted = await claimOtpRequest(regNoValue, 60);
+    if (!claimGranted) {
+      return json(res, 429, {
+        code: "OTP_COOLDOWN",
+        error: "Please wait 60 seconds before requesting another OTP.",
+      });
+    }
 
     const code = createOtpCode();
-    try {
-      await storeOtp(voter.reg_no, code);
+    await storeOtp(voter.reg_no, code);
 
-      if (
-        process.env.ALLOW_DEV_OTP === "true" &&
-        process.env.NODE_ENV !== "production"
-      ) {
-        return json(res, 200, {
-          message: "OTP generated in local test mode.",
-          sentTo: maskEmail(voter.email),
-          testMode: true,
-          devOtp: code,
-        });
-      }
-
-      const info = await sendOtpEmail(voter, code);
-
+    if (
+      process.env.ALLOW_DEV_OTP === "true" &&
+      process.env.NODE_ENV !== "production"
+    ) {
       return json(res, 200, {
-        message: "OTP sent.",
+        message: "OTP generated in local test mode.",
         sentTo: maskEmail(voter.email),
-        messageId: info.messageId,
+        testMode: true,
+        devOtp: code,
       });
-    } catch (error) {
-      await supabaseRequest("voters", {
-        method: "PATCH",
-        query: {
-          reg_no: `eq.${regNoValue}`,
-          otp_claimed_at: `eq.${claimedAt}`,
-        },
-        body: { otp_claimed_at: null },
-      }).catch(() => {});
-      throw error;
     }
+
+    const info = await sendOtpEmail(voter, code);
+
+    return json(res, 200, {
+      message: "OTP sent.",
+      sentTo: maskEmail(voter.email),
+      messageId: info.messageId,
+    });
   } catch (error) {
     const message = error.message || "Could not send OTP.";
     console.error("Request OTP failed", {

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import { getSingle, insertRows, supabaseRequest } from "./supabase.js";
 
-const OTP_EXPIRES_AT = "9999-12-31T23:59:59.000Z";
+const OTP_TTL_MS = 10 * 60 * 1000;
 
 
 function hashOtp(code) {
@@ -20,7 +20,7 @@ function hashOtp(code) {
 
 
 export function createOtpCode() {
-  return String(crypto.randomInt(100000, 999999));
+  return String(crypto.randomInt(100000, 1000000));
 }
 
 export async function storeOtp(regNo, code) {
@@ -37,7 +37,7 @@ export async function storeOtp(regNo, code) {
     {
       reg_no: regNo,
       code_hash: hashOtp(code),
-      expires_at: OTP_EXPIRES_AT,
+      expires_at: new Date(Date.now() + OTP_TTL_MS).toISOString(),
     },
   ]);
   return record;
@@ -51,6 +51,14 @@ export async function verifyOtp(regNo, code) {
   });
 
   if (!otp) return { ok: false, message: "No active OTP found." };
+  if (new Date(otp.expires_at).getTime() <= Date.now()) {
+    await supabaseRequest("otp_codes", {
+      method: "PATCH",
+      query: { id: `eq.${otp.id}` },
+      body: { used_at: new Date().toISOString() },
+    });
+    return { ok: false, message: "OTP has expired. Request a new code." };
+  }
   if (otp.attempts >= 5) return { ok: false, message: "Too many OTP attempts." };
   const isMatch = hashOtp(code) === otp.code_hash;
   if (!isMatch) {
@@ -73,14 +81,14 @@ export async function verifyOtp(regNo, code) {
 
 export async function sendOtpEmail(voter, code) {
   const subject = "NACOS UNN Election OTP";
-  const text = `Your NACOS UNN Election OTP is ${code}. Keep this code safe. It remains valid until you use it to log in and vote.`;
+  const text = `Your NACOS UNN Election OTP is ${code}. Keep this code safe. It expires in 10 minutes.`;
   const html = `
     <div style="font-family:Arial,sans-serif;line-height:1.5">
       <h2>NACOS UNN Election Login</h2>
       <p>Hello ${voter.name || voter.reg_no},</p>
       <p>Your login OTP is:</p>
       <p style="font-size:28px;font-weight:700;letter-spacing:4px">${code}</p>
-      <p>Keep this code safe. It remains valid until you use it to log in and vote.</p>
+      <p>Keep this code safe. It expires in 10 minutes.</p>
     </div>
   `;
 

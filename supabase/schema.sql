@@ -14,6 +14,46 @@ alter table unn_voters add column if not exists otp_verified_at timestamptz;
 alter table unn_voters add column if not exists ballot_submitted_at timestamptz;
 
 create index if not exists unn_voters_otp_claimed_at_idx on unn_voters (otp_claimed_at);
+
+-- Atomically enforce OTP resend cooldown per voter.
+create or replace function public.claim_unn_otp_request(
+  p_reg_no text,
+  p_cooldown_seconds integer default 60
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  previous_claim timestamptz;
+begin
+  select otp_claimed_at
+    into previous_claim
+    from public.unn_voters
+    where reg_no = p_reg_no
+    for update;
+
+  if not found then
+    return false;
+  end if;
+
+  if previous_claim is not null
+     and previous_claim > now() - make_interval(secs => greatest(p_cooldown_seconds, 0)) then
+    return false;
+  end if;
+
+  update public.unn_voters
+     set otp_claimed_at = now()
+   where reg_no = p_reg_no;
+
+  return true;
+end;
+$$;
+
+revoke all on function public.claim_unn_otp_request(text, integer) from public, anon, authenticated;
+grant execute on function public.claim_unn_otp_request(text, integer) to service_role;
+
 create index if not exists unn_voters_ballot_submitted_at_idx on unn_voters (ballot_submitted_at);
 
 create table if not exists unn_otp_codes (

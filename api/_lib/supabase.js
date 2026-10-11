@@ -74,3 +74,16 @@ export async function insertRows(path, rows, mergeDuplicates = "") {
     headers,
   });
 }
+
+
+export async function claimOtpRequest(regNo, cooldownSeconds = 60) {
+  const result = await supabaseRequest("rpc/claim_unn_otp_request", {
+    method: "POST",
+    body: {
+      p_reg_no: regNo,
+      p_cooldown_seconds: cooldownSeconds,
+    },
+  });
+
+  return result === true;
+}
