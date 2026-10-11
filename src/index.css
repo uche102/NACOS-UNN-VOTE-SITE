@@ -619,3 +619,262 @@ label span {
   font-weight: 800;
   font-size: 24px;
 }
+
+/* NACOS UNN voter authentication refresh */
+.login-page {
+  background-color: #f3f6f4;
+  background-image: none !important;
+  background-attachment: scroll;
+}
+
+.page-scrim {
+  background:
+    radial-gradient(ellipse at 12% 12%, rgba(21, 116, 82, 0.09), transparent 42%),
+    linear-gradient(135deg, #f7f9f7 0%, #edf3ef 100%);
+  padding: 32px 20px;
+}
+
+.login-panel {
+  width: min(440px, 100%);
+  padding: 36px 38px 30px;
+  border: 1px solid #e1e9e3;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(22, 55, 39, 0.11);
+}
+
+.login-logo {
+  width: 54px;
+  height: 54px;
+  margin-bottom: 18px;
+}
+
+.login-logo.nacos-logo-placeholder {
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: #176b4d;
+  color: #fff;
+  font-size: 26px;
+  font-weight: 850;
+  box-shadow: 0 8px 18px rgba(23, 107, 77, 0.18);
+}
+
+.login-panel h1 {
+  color: #183b2d;
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: -0.7px;
+}
+
+.login-panel > p {
+  margin: 7px 0 25px;
+  font-size: 14px;
+}
+
+.login-panel .form-stack {
+  gap: 18px;
+}
+
+.login-panel label {
+  gap: 9px;
+  font-size: 13px;
+}
+
+.login-panel label span {
+  color: #344b3e;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.login-panel .field {
+  min-height: 51px;
+  gap: 12px;
+  padding: 0 15px;
+  border-color: #dce5de;
+  border-radius: 11px;
+  background: #fbfcfb;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.login-panel .field:focus-within {
+  border-color: #21815e;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(33, 129, 94, 0.11);
+}
+
+.login-panel .field > svg {
+  flex-shrink: 0;
+  color: #718579;
+}
+
+.login-panel .field input {
+  min-height: 48px;
+  font-size: 14px;
+}
+
+.login-panel .field input::placeholder {
+  color: #9aa79e;
+}
+
+.login-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #e5ebe6;
+  border-radius: 12px;
+  background: #f3f6f3;
+}
+
+.login-mode-switch button {
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 750;
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.login-mode-switch .primary-button {
+  background: #176b4d;
+  box-shadow: 0 2px 5px rgba(19, 64, 44, 0.12);
+}
+
+.login-mode-switch .ghost-button {
+  border-color: transparent;
+  background: transparent;
+  color: #647469;
+}
+
+.login-mode-switch .ghost-button:hover {
+  background: #e8eee9;
+  color: #214d38;
+}
+
+.login-panel .primary-button {
+  width: 100%;
+  min-height: 49px;
+  border-radius: 11px;
+  background: #176b4d;
+  font-size: 14px;
+  font-weight: 750;
+  box-shadow: 0 5px 12px rgba(23, 107, 77, 0.13);
+  transition: transform 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.login-panel .primary-button:hover:not(:disabled) {
+  background: #10553d;
+  box-shadow: 0 7px 16px rgba(23, 107, 77, 0.19);
+  transform: translateY(-1px);
+}
+
+.login-panel .ghost-button {
+  min-height: 44px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.login-panel .login-help {
+  margin: 0;
+  color: #738176;
+  font-size: 12px;
+  line-height: 1.65;
+  text-align: left;
+}
+
+.login-panel .error-text,
+.login-panel .notice {
+  margin: 0;
+  padding: 11px 12px;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.login-panel .error-text {
+  border: 1px solid #f0d3d0;
+  background: #fff5f4;
+  color: #a13e36;
+}
+
+.login-panel .notice {
+  border: 1px solid #d6eadc;
+  background: #f0f8f2;
+  color: #246345;
+}
+
+@media (max-width: 480px) {
+  .page-scrim {
+    padding: 18px 14px;
+  }
+
+  .login-panel {
+    padding: 28px 22px 24px;
+    border-radius: 16px;
+  }
+
+  .login-panel h1 {
+    font-size: 25px;
+  }
+}
+
+.transaction-receipt {
+  display: grid;
+  gap: 12px;
+  margin: 22px 0;
+  padding: 18px;
+  border: 1px solid #dce8df;
+  border-radius: 12px;
+  background: #f7faf7;
+  text-align: left;
+}
+
+.transaction-receipt h2 {
+  margin: 0;
+  color: #183b2d;
+  font-size: 16px;
+}
+
+.transaction-receipt .receipt-status {
+  margin: 0;
+  color: #176b4d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.transaction-receipt label {
+  min-width: 0;
+  gap: 7px;
+}
+
+.receipt-hash {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 10px;
+  border: 1px solid #e1e9e3;
+  border-radius: 8px;
+  background: #fff;
+  color: #344b3e;
+  font-size: 12px;
+  line-height: 1.6;
+  user-select: all;
+}
+
+.transaction-receipt .ghost-button {
+  width: 100%;
+}
+
+.transaction-receipt .receipt-block {
+  margin: 0;
+  font-size: 12px;
+  text-align: left;
+}
+
+.receipt-unavailable {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+}

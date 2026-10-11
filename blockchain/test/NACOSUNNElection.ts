@@ -5,200 +5,96 @@ import { ethers } from "ethers";
 describe("NACOSUNNElection", function () {
   async function deployElection() {
     const { ethers: hardhatEthers } = await network.connect();
+    const [authority, otherAccount] = await hardhatEthers.getSigners();
 
-    const [authority, otherAccount] =
-      await hardhatEthers.getSigners();
-
-    const NACOSUNNElection =
+    const Factory =
       await hardhatEthers.getContractFactory("NACOSUNNElection");
-
-    const election = await NACOSUNNElection.deploy();
-
+    const election = await Factory.deploy();
     await election.waitForDeployment();
 
-    return {
-      election,
-      authority,
-      otherAccount,
-    };
+    return { election, authority, otherAccount };
   }
 
-  function hashId(value: string): string {
-    return ethers.id(value);
-  }
+  const hash = (value: string) => ethers.id(value);
 
-  describe("Deployment", function () {
-    it("should set the deployer as the election authority", async function () {
-      const { election, authority } = await deployElection();
+  it("sets the deployer as authority and starts inactive", async function () {
+    const { election, authority } = await deployElection();
 
-      expect(await election.electionAuthority()).to.equal(
-        authority.address
-      );
-    });
-
-    it("should start with the election active", async function () {
-      const { election } = await deployElection();
-
-      expect(await election.electionActive()).to.equal(true);
-    });
+    expect(await election.electionAuthority()).to.equal(authority.address);
+    expect(await election.electionActive()).to.equal(false);
   });
 
-  describe("Ballot recording", function () {
-    it("should record a voter's ballot and return a transaction hash", async function () {
-      const { election } = await deployElection();
+  it("allows only the authority to change election status", async function () {
+    const { election, otherAccount } = await deployElection();
 
-      const voterHash = hashId("NACOS-VOTER-001");
+    await expect(election.setElectionActive(true))
+      .to.emit(election, "ElectionStatusChanged")
+      .withArgs(true);
 
-      const postId = hashId("post-president");
-      const candidateId = hashId("candidate-president-001");
+    expect(await election.electionActive()).to.equal(true);
 
-      const tx = await election.recordBallot(
-        voterHash,
-        [postId],
-        [candidateId]
-      );
-
-      // A blockchain transaction must have a transaction hash.
-      expect(tx.hash).to.be.a("string");
-      expect(tx.hash).to.match(/^0x[a-fA-F0-9]{64}$/);
-
-      // Wait for blockchain confirmation.
-      const receipt = await tx.wait();
-
-      expect(receipt).to.not.equal(null);
-
-      // Verify that the voter is now marked as having voted.
-      expect(await election.hasVoted(voterHash)).to.equal(true);
-
-      // Verify that the vote count increased.
-      expect(
-        await election.getVoteCount(postId, candidateId)
-      ).to.equal(1);
-    });
-
-    it("should support multiple selections in one ballot", async function () {
-      const { election } = await deployElection();
-
-      const voterHash = hashId("NACOS-200L-VOTER-001");
-
-      const horPostId = hashId("post-hor");
-
-      const candidate1 = hashId("candidate-hor-001");
-      const candidate2 = hashId("candidate-hor-002");
-      const candidate3 = hashId("candidate-hor-003");
-      const candidate4 = hashId("candidate-hor-004");
-      const candidate5 = hashId("candidate-hor-005");
-
-      const tx = await election.recordBallot(
-        voterHash,
-        [
-          horPostId,
-          horPostId,
-          horPostId,
-          horPostId,
-          horPostId,
-        ],
-        [
-          candidate1,
-          candidate2,
-          candidate3,
-          candidate4,
-          candidate5,
-        ]
-      );
-
-      expect(tx.hash).to.match(/^0x[a-fA-F0-9]{64}$/);
-
-      await tx.wait();
-
-      expect(
-        await election.getVoteCount(horPostId, candidate1)
-      ).to.equal(1);
-
-      expect(
-        await election.getVoteCount(horPostId, candidate2)
-      ).to.equal(1);
-
-      expect(
-        await election.getVoteCount(horPostId, candidate3)
-      ).to.equal(1);
-
-      expect(
-        await election.getVoteCount(horPostId, candidate4)
-      ).to.equal(1);
-
-      expect(
-        await election.getVoteCount(horPostId, candidate5)
-      ).to.equal(1);
-    });
-
-    it("should prevent the same voter from voting twice", async function () {
-      const { election } = await deployElection();
-
-      const voterHash = hashId("NACOS-VOTER-002");
-
-      const postId = hashId("post-president");
-      const candidateId = hashId("candidate-president-002");
-
-      await election.recordBallot(
-        voterHash,
-        [postId],
-        [candidateId]
-      );
-
-      await expect(
-        election.recordBallot(
-          voterHash,
-          [postId],
-          [candidateId]
-        )
-      ).to.be.revertedWith("Voter has already voted");
-    });
+    await expect(
+      election.connect(otherAccount).setElectionActive(false)
+    ).to.be.revertedWith("Not authorized");
   });
 
-  describe("Election control", function () {
-    it("should allow the authority to stop the election", async function () {
-      const { election } = await deployElection();
+  it("records a commitment without exposing candidate selections", async function () {
+    const { election } = await deployElection();
+    const submissionId = hash("submission-001");
+    const commitment = hash("private-ballot-commitment");
 
-      await election.setElectionActive(false);
+    await election.setElectionActive(true);
 
-      expect(await election.electionActive()).to.equal(false);
-    });
+await expect(election.recordBallot(submissionId, commitment))
+  .to.emit(election, "BallotCommitted")
+  .withArgs(submissionId, commitment, (timestamp: bigint) => timestamp > 0n);
 
-    it("should reject ballots when the election is inactive", async function () {
-      const { election } = await deployElection();
+    expect(await election.submissionRecorded(submissionId)).to.equal(true);
+    expect(await election.ballotCommitments(submissionId)).to.equal(commitment);
+  });
 
-      await election.setElectionActive(false);
+  it("rejects submissions while inactive", async function () {
+    const { election } = await deployElection();
 
-      const voterHash = hashId("NACOS-VOTER-003");
-      const postId = hashId("post-president");
-      const candidateId = hashId("candidate-president-003");
+    await expect(
+      election.recordBallot(hash("submission-002"), hash("commitment-002"))
+    ).to.be.revertedWith("Election is not active");
+  });
 
-      await expect(
-        election.recordBallot(
-          voterHash,
-          [postId],
-          [candidateId]
-        )
-      ).to.be.revertedWith("Election is not active");
-    });
+  it("rejects duplicate submission IDs", async function () {
+    const { election } = await deployElection();
+    const submissionId = hash("submission-003");
 
-    it("should reject unauthorized ballot submissions", async function () {
-      const { election, otherAccount } = await deployElection();
+    await election.setElectionActive(true);
+    await election.recordBallot(submissionId, hash("commitment-003"));
 
-      const voterHash = hashId("NACOS-VOTER-004");
-      const postId = hashId("post-president");
-      const candidateId = hashId("candidate-president-004");
+    await expect(
+      election.recordBallot(submissionId, hash("commitment-004"))
+    ).to.be.revertedWith("Submission already recorded");
+  });
 
-      await expect(
-        election
-          .connect(otherAccount)
-          .recordBallot(
-            voterHash,
-            [postId],
-            [candidateId]
-          )
-      ).to.be.revertedWith("Not authorized");
-    });
+  it("rejects zero submission IDs and zero commitments", async function () {
+    const { election } = await deployElection();
+    await election.setElectionActive(true);
+
+    await expect(
+      election.recordBallot(ethers.ZeroHash, hash("commitment-005"))
+    ).to.be.revertedWith("Invalid submission ID");
+
+    await expect(
+      election.recordBallot(hash("submission-005"), ethers.ZeroHash)
+    ).to.be.revertedWith("Invalid commitment");
+  });
+
+  it("rejects ballot recording by non-authorities", async function () {
+    const { election, otherAccount } = await deployElection();
+    await election.setElectionActive(true);
+
+    await expect(
+      election.connect(otherAccount).recordBallot(
+        hash("submission-006"),
+        hash("commitment-006")
+      )
+    ).to.be.revertedWith("Not authorized");
   });
 });

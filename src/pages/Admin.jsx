@@ -365,12 +365,12 @@ export default function Admin() {
   function handleTemplateDownload() {
     const rows = [
       {
-        post: "Who will be the next president 2027",
-        name: "Bola-Ahmed Tinubu",
-        tagline: "Example tagline",
-        image_url: "https://example.com/image.jpg",
+        post: "",
+        name: "",
+        tagline: "",
+        image_url: "",
         eligible_level: "",
-        display_order: 1,
+        display_order: "",
       },
     ];
     const csv = Papa.unparse(rows, { header: true });

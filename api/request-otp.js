@@ -48,18 +48,6 @@ export default async function handler(req, res) {
     const code = createOtpCode();
     await storeOtp(voter.reg_no, code);
 
-    if (
-      process.env.ALLOW_DEV_OTP === "true" &&
-      process.env.NODE_ENV !== "production"
-    ) {
-      return json(res, 200, {
-        message: "OTP generated in local test mode.",
-        sentTo: maskEmail(voter.email),
-        testMode: true,
-        devOtp: code,
-      });
-    }
-
     const info = await sendOtpEmail(voter, code);
 
     return json(res, 200, {
@@ -83,14 +71,6 @@ export default async function handler(req, res) {
         error: message,
         regNo: requestedRegNo,
         sentTo: "your registered email",
-      });
-    }
-    if (process.env.EMERGENCY_OTP) {
-      return json(res, 200, {
-        message:
-          "Use the emergency OTP provided by the election administrator.",
-        sentTo: "emergency OTP",
-        emergency: true,
       });
     }
     if (

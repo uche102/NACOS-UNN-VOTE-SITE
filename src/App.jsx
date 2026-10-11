@@ -5,7 +5,6 @@ const Login = lazy(() => import("./pages/Login.jsx"));
 const Ballot = lazy(() => import("./pages/Ballot.jsx"));
 const Success = lazy(() => import("./pages/Success.jsx"));
 const AdminGate = lazy(() => import("./pages/AdminGate.jsx"));
-const UNNDemoAdmin = lazy(() => import("./pages/UNNDemoAdmin.jsx"));
 
 const ProtectedBallot = ({ children }) => {
   const voterSession =
@@ -34,8 +33,6 @@ function App() {
           <Route path="/success" element={<Success />} />
           <Route path="/admin" element={<AdminGate />} />
 
-          {/* Separate NACOS UNN prototype with its own local demo dashboard. */}
-          <Route path="/unn-demo-admin" element={<UNNDemoAdmin />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

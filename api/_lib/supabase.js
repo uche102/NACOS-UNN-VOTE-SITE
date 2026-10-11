@@ -9,6 +9,7 @@ const TABLES = {
   votes: "unn_votes",
   voters_with_vote_status: "unn_voters_with_vote_status",
   election_results: "unn_election_results",
+  ballot_submissions: "unn_ballot_submissions",
 };
 
 function assertConfig() {

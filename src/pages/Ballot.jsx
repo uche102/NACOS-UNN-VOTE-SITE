@@ -139,8 +139,8 @@ export default function Ballot() {
 
     try {
       setSubmitting(true);
-      await api.vote(selections);
-      navigate("/success");
+      const receipt = await api.vote(selections);
+      navigate("/success", { state: { receipt } });
     } catch (err) {
       setError(err.message);
     } finally {

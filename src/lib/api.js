@@ -49,7 +49,7 @@ function persistAdminToken(token) {
 }
 
 async function request(path, options = {}) {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || "";
+  const baseUrl = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? "http://localhost:10000" : "");
   const voterToken = readVoterToken();
   const adminToken = readStoredToken("nacosUnnAdminToken");
   const isAdminRoute = path.startsWith("/api/admin");
@@ -96,6 +96,16 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  setupPassword: (regNo, setupCode, password) =>
+    request("/api/setup-password", {
+      method: "POST",
+      body: { reg_no: regNo, setup_code: setupCode, password },
+    }),
+  passwordLogin: (regNo, password) =>
+    request("/api/password-login", {
+      method: "POST",
+      body: { reg_no: regNo, password },
+    }),
   requestOtp: (regNo) =>
     request("/api/request-otp", { method: "POST", body: { reg_no: regNo } }),
   verifyOtp: (regNo, otp) =>
@@ -122,6 +132,14 @@ export const api = {
   setElectionStatus: (votingOpen) =>
     request("/api/admin/session", { method: "PATCH", body: { votingOpen } }),
   adminPosts: () => request("/api/admin/posts"),
+  adminVoters: () => request("/api/admin/voters"),
+  generateSetupCode: (regNo) =>
+    request("/api/admin/setup-code", {
+      method: "POST",
+      body: { reg_no: regNo },
+    }),
+  registerVoter: (voter) =>
+    request("/api/admin/voters", { method: "POST", body: voter }),
   resetElection: (items) =>
     request("/api/admin/reset-election", { method: "POST", body: { items } }),
   resetVotes: () =>

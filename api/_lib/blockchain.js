@@ -4,111 +4,192 @@ import { ethers } from "ethers";
 const RPC_URL = process.env.BLOCKCHAIN_RPC_URL;
 const CONTRACT_ADDRESS = process.env.NACOS_ELECTION_CONTRACT_ADDRESS;
 const PRIVATE_KEY = process.env.BLOCKCHAIN_PRIVATE_KEY;
-const VOTER_SECRET = process.env.BLOCKCHAIN_VOTER_SECRET;
 
 const ABI = [
-  "function recordBallot(bytes32 voterHash, bytes32[] postIds, bytes32[] candidateIds)",
-  "function hasVoterVoted(bytes32 voterHash) view returns (bool)",
-  "function getVoteCount(bytes32 postId, bytes32 candidateId) view returns (uint256)",
+  "function recordBallot(bytes32 submissionId, bytes32 commitment)",
+  "function submissionRecorded(bytes32 submissionId) view returns (bool)",
+  "function ballotCommitments(bytes32 submissionId) view returns (bytes32)",
   "function electionActive() view returns (bool)",
+  "event BallotCommitted(bytes32 indexed submissionId, bytes32 commitment, uint256 timestamp)",
 ];
 
 function assertConfig() {
-  if (!RPC_URL) {
-    throw new Error("BLOCKCHAIN_RPC_URL is not configured.");
-  }
-
+  if (!RPC_URL) throw new Error("BLOCKCHAIN_RPC_URL is not configured.");
   if (!CONTRACT_ADDRESS) {
     throw new Error("NACOS_ELECTION_CONTRACT_ADDRESS is not configured.");
   }
-
   if (!PRIVATE_KEY) {
     throw new Error("BLOCKCHAIN_PRIVATE_KEY is not configured.");
   }
+}
 
-  if (!VOTER_SECRET) {
-    throw new Error("BLOCKCHAIN_VOTER_SECRET is not configured.");
-  }
+function getProvider() {
+  assertConfig();
+  return new ethers.JsonRpcProvider(RPC_URL);
 }
 
 function getContract() {
-  assertConfig();
-
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
+  const provider = getProvider();
   const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
-
   return new ethers.Contract(CONTRACT_ADDRESS, ABI, wallet);
 }
 
-export function createVoterHash(regNo) {
-  assertConfig();
-
-  return ethers.keccak256(
-    ethers.solidityPacked(
-      ["string", "string"],
-      [String(regNo), VOTER_SECRET],
-    ),
+export function toBytes32Id(value) {
+  return ethers.keccak256(ethers.toUtf8Bytes(String(value)));
+}
+async function findRecordedTransaction(contract, submissionId, commitment) {
+  const filter = contract.filters.BallotCommitted(submissionId);
+  const events = await contract.queryFilter(filter, 0, "latest");
+  const matching = events.filter(
+    (event) =>
+      String(event.args?.commitment).toLowerCase() === commitment.toLowerCase()
   );
+
+  if (matching.length === 0) return null;
+
+  const event = matching[matching.length - 1];
+  return {
+    transactionHash: event.transactionHash,
+    blockNumber: event.blockNumber,
+  };
 }
 
-function hashId(value) {
-  return ethers.id(String(value));
-}
-
-export async function recordBallot({
-  regNo,
-  postIds,
-  candidateIds,
+export async function recordBallotCommitment({
+  submissionId,
+  commitment,
+  onBroadcast,
+  existingTransactionHash = null,
 }) {
-  if (!Array.isArray(postIds) || !Array.isArray(candidateIds)) {
-    throw new Error("postIds and candidateIds must be arrays.");
-  }
-
-  if (postIds.length === 0) {
-    throw new Error("Ballot cannot be empty.");
-  }
-
-  if (postIds.length !== candidateIds.length) {
-    throw new Error("postIds and candidateIds must have the same length.");
+  if (!submissionId || !ethers.isHexString(commitment, 32)) {
+    throw new Error("A submission ID and bytes32 commitment are required.");
   }
 
   const contract = getContract();
+  const provider = contract.runner.provider;
+  const { chainId } = await provider.getNetwork();
 
-  const voterHash = createVoterHash(regNo);
-  const blockchainPostIds = postIds.map(hashId);
-  const blockchainCandidateIds = candidateIds.map(hashId);
-
-  const alreadyVoted = await contract.hasVoterVoted(voterHash);
-
-  if (alreadyVoted) {
-    throw new Error("This voter has already voted on the blockchain.");
+  if (chainId !== 11155111n) {
+    throw new Error("Refusing to submit: blockchain network is not Sepolia.");
   }
 
-  const tx = await contract.recordBallot(
-    voterHash,
-    blockchainPostIds,
-    blockchainCandidateIds,
-  );
+  const id = toBytes32Id(submissionId);
+  const expectedCommitment = commitment.toLowerCase();
+
+  const alreadyRecorded = await contract.submissionRecorded(id);
+
+  if (alreadyRecorded) {
+    const stored = await contract.ballotCommitments(id);
+
+    if (stored.toLowerCase() !== expectedCommitment) {
+      throw new Error(
+        "Submission ID already exists with a different commitment."
+      );
+    }
+
+    const transaction = await findRecordedTransaction(
+      contract,
+      id,
+      stored
+    );
+
+    if (!transaction) {
+      throw new Error(
+        "Submission exists on-chain, but its transaction event could not be recovered."
+      );
+    }
+
+    return {
+      alreadyRecorded: true,
+      submissionId: id,
+      commitment: stored,
+      transactionHash: transaction.transactionHash,
+      blockNumber: transaction.blockNumber,
+    };
+  }
+
+  if (existingTransactionHash) {
+    const receipt = await provider.getTransactionReceipt(existingTransactionHash);
+
+    if (receipt) {
+      if (receipt.status !== 1) {
+        throw new Error(
+          `Previously broadcast transaction ${existingTransactionHash} failed. Review it before retrying.`
+        );
+      }
+
+      if (await contract.submissionRecorded(id)) {
+        const stored = await contract.ballotCommitments(id);
+
+        if (stored.toLowerCase() !== expectedCommitment) {
+          throw new Error("Existing transaction recorded a different commitment.");
+        }
+
+        return {
+          alreadyRecorded: true,
+          submissionId: id,
+          commitment: stored,
+          transactionHash: existingTransactionHash,
+          blockNumber: receipt.blockNumber,
+        };
+      }
+
+      throw new Error(
+        `Transaction ${existingTransactionHash} succeeded but contract state is inconsistent. Do not rebroadcast.`
+      );
+    }
+
+    const pending = await provider.getTransaction(existingTransactionHash);
+
+    if (pending) {
+      throw new Error(
+        `Transaction ${existingTransactionHash} is still pending. Do not submit another transaction.`
+      );
+    }
+
+    throw new Error(
+      `Transaction ${existingTransactionHash} cannot be found. Its status is uncertain; do not automatically rebroadcast.`
+    );
+  }
+
+  if (!(await contract.electionActive())) {
+    throw new Error("The on-chain election is inactive.");
+  }
+
+  const tx = await contract.recordBallot(id, expectedCommitment);
+
+  if (onBroadcast) {
+    try {
+      await onBroadcast(tx.hash);
+    } catch {
+      throw new Error(
+        `Transaction ${tx.hash} was broadcast, but saving its reference failed. Check this transaction before retrying.`
+      );
+    }
+  }
 
   const receipt = await tx.wait();
 
   if (!receipt || receipt.status !== 1) {
-    throw new Error("Blockchain transaction failed.");
+    throw new Error(
+      `Blockchain transaction ${tx.hash} was not confirmed successfully.`
+    );
   }
 
   return {
+    alreadyRecorded: false,
+    submissionId: id,
+    commitment: expectedCommitment,
     transactionHash: tx.hash,
     blockNumber: receipt.blockNumber,
-    voterHash,
   };
 }
+
 
 export async function getBlockchainInfo() {
   assertConfig();
 
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
+  const provider = getProvider();
   const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
-
   const network = await provider.getNetwork();
 
   return {

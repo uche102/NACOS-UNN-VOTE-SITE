@@ -1,97 +1,50 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.34;
 
+/// @notice Records ballot commitments without publishing ballot selections.
+/// @dev Voter eligibility and one-ballot-per-voter enforcement remain off-chain.
 contract NACOSUNNElection {
     address public electionAuthority;
     bool public electionActive;
 
-    // Prevents a voter from submitting more than one ballot.
-    mapping(bytes32 => bool) public hasVoted;
+    mapping(bytes32 => bool) public submissionRecorded;
+    mapping(bytes32 => bytes32) public ballotCommitments;
 
-    // postId => candidateId => vote count
-    mapping(bytes32 => mapping(bytes32 => uint256)) public voteCount;
-
-    event BallotRecorded(
-        bytes32 indexed voterHash,
-        bytes32[] postIds,
-        bytes32[] candidateIds,
+    event BallotCommitted(
+        bytes32 indexed submissionId,
+        bytes32 commitment,
         uint256 timestamp
     );
 
     event ElectionStatusChanged(bool active);
 
     modifier onlyAuthority() {
-        require(
-            msg.sender == electionAuthority,
-            "Not authorized"
-        );
+        require(msg.sender == electionAuthority, "Not authorized");
         _;
     }
 
     constructor() {
         electionAuthority = msg.sender;
-        electionActive = true;
+        electionActive = false;
     }
 
     function setElectionActive(bool active) external onlyAuthority {
         electionActive = active;
-
         emit ElectionStatusChanged(active);
     }
 
     function recordBallot(
-        bytes32 voterHash,
-        bytes32[] calldata postIds,
-        bytes32[] calldata candidateIds
+        bytes32 submissionId,
+        bytes32 commitment
     ) external onlyAuthority {
         require(electionActive, "Election is not active");
-        require(voterHash != bytes32(0), "Invalid voter hash");
-        require(
-            !hasVoted[voterHash],
-            "Voter has already voted"
-        );
-        require(
-            postIds.length > 0,
-            "Ballot cannot be empty"
-        );
-        require(
-            postIds.length == candidateIds.length,
-            "Mismatched ballot data"
-        );
+        require(submissionId != bytes32(0), "Invalid submission ID");
+        require(commitment != bytes32(0), "Invalid commitment");
+        require(!submissionRecorded[submissionId], "Submission already recorded");
 
-        hasVoted[voterHash] = true;
+        submissionRecorded[submissionId] = true;
+        ballotCommitments[submissionId] = commitment;
 
-        for (uint256 i = 0; i < postIds.length; i++) {
-            require(
-                postIds[i] != bytes32(0),
-                "Invalid post ID"
-            );
-            require(
-                candidateIds[i] != bytes32(0),
-                "Invalid candidate ID"
-            );
-
-            voteCount[postIds[i]][candidateIds[i]] += 1;
-        }
-
-        emit BallotRecorded(
-            voterHash,
-            postIds,
-            candidateIds,
-            block.timestamp
-        );
-    }
-
-    function getVoteCount(
-        bytes32 postId,
-        bytes32 candidateId
-    ) external view returns (uint256) {
-        return voteCount[postId][candidateId];
-    }
-
-    function hasVoterVoted(
-        bytes32 voterHash
-    ) external view returns (bool) {
-        return hasVoted[voterHash];
+        emit BallotCommitted(submissionId, commitment, block.timestamp);
     }
 }
