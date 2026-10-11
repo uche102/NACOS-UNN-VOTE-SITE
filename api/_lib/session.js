@@ -27,7 +27,9 @@ function verifyToken(token, secret) {
 
   try {
     const payload = JSON.parse(Buffer.from(encoded, "base64url").toString());
-    if (payload.exp && Date.now() > payload.exp) return null;
+    if (!Number.isFinite(payload.exp) || Date.now() >= payload.exp) {
+      return null;
+    }
     return payload;
   } catch {
     return null;

@@ -54,7 +54,9 @@ async function findRecordedTransaction(contract, submissionId, commitment) {
   };
 }
 
-export async function recordBallotCommitment({
+export async function recordBallotCommitmentWithDependencies({
+  contract,
+  provider,
   submissionId,
   commitment,
   onBroadcast,
@@ -64,8 +66,10 @@ export async function recordBallotCommitment({
     throw new Error("A submission ID and bytes32 commitment are required.");
   }
 
-  const contract = getContract();
-  const provider = contract.runner.provider;
+  if (!contract || !provider) {
+    throw new Error("A contract and provider are required.");
+  }
+
   const { chainId } = await provider.getNetwork();
 
   if (chainId !== 11155111n) {
@@ -184,6 +188,16 @@ export async function recordBallotCommitment({
   };
 }
 
+
+export async function recordBallotCommitment(args) {
+  const contract = getContract();
+
+  return recordBallotCommitmentWithDependencies({
+    ...args,
+    contract,
+    provider: contract.runner.provider,
+  });
+}
 
 export async function getBlockchainInfo() {
   assertConfig();
