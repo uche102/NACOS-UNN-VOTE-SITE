@@ -1,0 +1,6 @@
+api/**
+server.js
+blockchain/**
+scripts/**
+supabase/**
+tests/**
