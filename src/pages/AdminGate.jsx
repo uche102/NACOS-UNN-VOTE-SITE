@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import welcome from "../assets/welcome.jpeg";
 import { api } from "../lib/api";
 
-const Admin = lazy(() => import("./Admin.jsx"));
+const Admin = lazy(() => import("./UNNDemoAdmin.jsx"));
 
 export default function AdminGate() {
   const [password, setPassword] = useState("");

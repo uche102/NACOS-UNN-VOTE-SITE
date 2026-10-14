@@ -11,4 +11,4 @@ services:
       - key: COOKIE_SAMESITE
         value: None
       - key: CORS_ORIGIN
-        value: https://election-site-zeta.vercel.app,http://localhost:3000
+        value: https://nacos-unn-vote-site.vercel.app
