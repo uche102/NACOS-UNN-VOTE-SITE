@@ -140,6 +140,11 @@ export const api = {
     }),
   registerVoter: (voter) =>
     request("/api/admin/voters", { method: "POST", body: voter }),
+  importVoters: (voters) =>
+    request("/api/admin/voters", {
+      method: "POST",
+      body: { voters },
+    }),
   resetElection: (items) =>
     request("/api/admin/reset-election", { method: "POST", body: { items } }),
   resetVotes: () =>

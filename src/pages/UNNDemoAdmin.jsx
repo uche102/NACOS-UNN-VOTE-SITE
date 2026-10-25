@@ -42,7 +42,13 @@ export default function UNNDemoAdmin() {
     rows: [],
     errors: [],
   });
+  const [voterImport, setVoterImport] = useState({
+    fileName: "",
+    rows: [],
+    errors: [],
+  });
   const candidateFileInputRef = useRef(null);
+  const voterFileInputRef = useRef(null);
 
   const loadCore = useCallback(async () => {
     const [postData, candidateData, statusData] = await Promise.all([
@@ -288,6 +294,10 @@ export default function UNNDemoAdmin() {
       const errors = [];
       const allowedHeaders = new Set(["full name", "position", "tagline", "image url"]);
       (sheetRows[0] || []).forEach((value, index) => {
+        if (worksheet[XLSX.utils.encode_cell({ r: 0, c: index })]?.f) {
+          errors.push({ row: 1, message: "Formula headers are not accepted." });
+          return;
+        }
         if (value === "") return;
         if (typeof value !== "string") {
           errors.push({ row: 1, message: "Column headers must be text." });
@@ -329,6 +339,13 @@ export default function UNNDemoAdmin() {
       sheetRows.slice(1).forEach((values, index) => {
         const row = index + 2;
         if (!values.some((value) => value !== "" && value !== null && value !== undefined)) return;
+        const formulas = values.some((_, column) => {
+          const address = XLSX.utils.encode_cell({ r: row - 1, c: column });
+          return Boolean(worksheet[address]?.f);
+        });
+        if (formulas) {
+          errors.push({ row, message: "Formula cells are not accepted; enter plain values." });
+        }
         const readText = (header, label) => {
           const value = values[headers.get(header)] ?? "";
           if (value === "") return "";
@@ -389,6 +406,232 @@ export default function UNNDemoAdmin() {
         setCandidateImport((current) => ({ ...current, errors: error.data.errors }));
       }
       setNotice(messageFrom(error, "Unable to import candidates."));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function downloadVoterTemplate() {
+    const XLSX = await import("@e965/xlsx");
+    const workbook = XLSX.utils.book_new();
+    const voterSheet = XLSX.utils.aoa_to_sheet([
+      ["Registration Number", "Full Name", "Email", "Level"],
+      [
+        "DEMO ONLY - TEST0001",
+        "Alex Example",
+        "alex.example@example.invalid",
+        "100L",
+      ],
+    ]);
+    const instructionsSheet = XLSX.utils.aoa_to_sheet([
+      ["Voter Excel Import Instructions"],
+      ["1. Enter one voter per row in the Voters sheet."],
+      ["2. Registration Number, Full Name, Email, and Level are required."],
+      ["3. Level must be 100L, 200L, 300L, 400L, or 500L."],
+      ["4. Enter Registration Number as text to preserve leading zeros."],
+      ["5. Delete the DEMO ONLY example row before importing."],
+      ["6. Save the workbook as an Excel .xlsx file."],
+      ["7. After import, generate a one-time setup code for each voter."],
+      ["8. Share each code privately; the voter sets their own password."],
+    ]);
+    XLSX.utils.book_append_sheet(workbook, voterSheet, "Voters");
+    XLSX.utils.book_append_sheet(workbook, instructionsSheet, "Instructions");
+    const content = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([content], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "voter-import-template.xlsx";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function readVoterWorkbook(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setNotice("");
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setVoterImport({
+        fileName: file.name,
+        rows: [],
+        errors: [{ row: null, message: "Choose a Microsoft Excel .xlsx file." }],
+      });
+      return;
+    }
+
+    try {
+      const content = await file.arrayBuffer();
+      const signature = new Uint8Array(content, 0, Math.min(content.byteLength, 2));
+      if (signature.length !== 2 || signature[0] !== 0x50 || signature[1] !== 0x4b) {
+        throw new Error("Not an Excel workbook.");
+      }
+      const XLSX = await import("@e965/xlsx");
+      const workbook = XLSX.read(content, { type: "array" });
+      const worksheet = workbook.Sheets.Voters;
+      if (!worksheet) {
+        setVoterImport({
+          fileName: file.name,
+          rows: [],
+          errors: [{
+            row: null,
+            message: 'The workbook must contain a worksheet named "Voters".',
+          }],
+        });
+        return;
+      }
+
+      const sheetRows = XLSX.utils.sheet_to_json(worksheet, {
+        header: 1,
+        raw: true,
+        defval: "",
+        blankrows: true,
+      });
+      const requiredHeaders = [
+        "registration number",
+        "full name",
+        "email",
+        "level",
+      ];
+      const allowedHeaders = new Set(requiredHeaders);
+      const columns = new Map();
+      const errors = [];
+      (sheetRows[0] || []).forEach((value, index) => {
+        if (worksheet[XLSX.utils.encode_cell({ r: 0, c: index })]?.f) {
+          errors.push({ row: 1, message: "Formula headers are not accepted." });
+          return;
+        }
+        if (value === "") return;
+        if (typeof value !== "string") {
+          errors.push({ row: 1, message: "Column headers must be text." });
+          return;
+        }
+        const header = value.trim().toLowerCase();
+        if (!allowedHeaders.has(header)) {
+          errors.push({ row: 1, message: `Unexpected column "${value}".` });
+        } else if (columns.has(header)) {
+          errors.push({ row: 1, message: `Column "${value}" appears more than once.` });
+        } else {
+          columns.set(header, index);
+        }
+      });
+      requiredHeaders.forEach((header) => {
+        if (!columns.has(header)) {
+          errors.push({
+            row: 1,
+            message: `Required column "${header === "registration number" ? "Registration Number" : header === "full name" ? "Full Name" : header}" is missing.`,
+          });
+        }
+      });
+      if (errors.length) {
+        setVoterImport({ fileName: file.name, rows: [], errors });
+        return;
+      }
+
+      const normalizeRegNo = (value) => String(value || "").trim().toUpperCase();
+      const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+      const existingRegNos = new Set(voters.map((voter) => normalizeRegNo(voter.reg_no)));
+      const existingEmails = new Set(voters.map((voter) => normalizeEmail(voter.email)));
+      const seenRegNos = new Set();
+      const seenEmails = new Set();
+      const rows = [];
+
+      sheetRows.slice(1).forEach((values, index) => {
+        const row = index + 2;
+        if (!values.some((value) => value !== "" && value !== null && value !== undefined)) return;
+        const formulas = values.some((_, column) => {
+          const address = XLSX.utils.encode_cell({ r: row - 1, c: column });
+          return Boolean(worksheet[address]?.f);
+        });
+        if (formulas) {
+          errors.push({ row, message: "Formula cells are not accepted; enter plain values." });
+        }
+        const readText = (header, label) => {
+          const value = values[columns.get(header)] ?? "";
+          if (value === "") return "";
+          if (typeof value !== "string") {
+            errors.push({ row, message: `${label} must contain text.` });
+            return "";
+          }
+          return value.trim();
+        };
+        const reg_no = normalizeRegNo(readText("registration number", "Registration Number"));
+        const name = readText("full name", "Full Name");
+        const email = normalizeEmail(readText("email", "Email"));
+        const level = readText("level", "Level").toUpperCase();
+
+        if (!reg_no) errors.push({ row, message: "Registration Number is required." });
+        else if (reg_no.length > 80) errors.push({ row, message: "Voter ID is too long." });
+        else if (reg_no.startsWith("DEMO ONLY -")) {
+          errors.push({ row, message: "Remove the demonstration example row before importing." });
+        }
+        if (!name) errors.push({ row, message: "Full Name is required." });
+        else if (name.length > 120) errors.push({ row, message: "Full Name is too long." });
+        if (!email) errors.push({ row, message: "Email is required." });
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+          errors.push({ row, message: "Enter a valid email address." });
+        }
+        if (!level) errors.push({ row, message: "Level is required." });
+        else if (!["100L", "200L", "300L", "400L", "500L"].includes(level)) {
+          errors.push({ row, message: "Select a valid academic level." });
+        }
+
+        if (reg_no && existingRegNos.has(reg_no)) {
+          errors.push({ row, message: `Voter ID ${reg_no} is already registered.` });
+        } else if (reg_no && seenRegNos.has(reg_no)) {
+          errors.push({ row, message: `Voter ID ${reg_no} appears more than once in this workbook.` });
+        }
+        if (email && existingEmails.has(email)) {
+          errors.push({ row, message: `Email ${email} is already registered.` });
+        } else if (email && seenEmails.has(email)) {
+          errors.push({ row, message: `Email ${email} appears more than once in this workbook.` });
+        }
+        if (reg_no) seenRegNos.add(reg_no);
+        if (email) seenEmails.add(email);
+        rows.push({ row, reg_no, name, email, level });
+      });
+
+      if (!rows.length) errors.push({ row: null, message: "The Voters worksheet contains no voter rows." });
+      if (rows.length > 500) {
+        errors.push({ row: null, message: "Import no more than 500 voters at a time." });
+      }
+      setVoterImport({ fileName: file.name, rows, errors });
+    } catch {
+      setVoterImport({
+        fileName: file.name,
+        rows: [],
+        errors: [{ row: null, message: "The selected file is not a valid .xlsx workbook." }],
+      });
+    }
+  }
+
+  async function confirmVoterImport() {
+    if (!voterImport.rows.length || voterImport.errors.length) return;
+    if (!window.confirm(`Import ${voterImport.rows.length} voters from ${voterImport.fileName}?`)) return;
+    setLoading(true);
+    setNotice("");
+    try {
+      const result = await api.importVoters(voterImport.rows);
+      setVoterImport({ fileName: "", rows: [], errors: [] });
+      try {
+        await loadVoters();
+      } catch (error) {
+        setNotice(
+          `Imported ${result.imported} voters, but could not refresh the voter directory: ${messageFrom(error, "refresh failed.")}`,
+        );
+        return;
+      }
+      setNotice(
+        `Imported ${result.imported} voters. Generate a one-time setup code for each voter so they can create a password.`,
+      );
+    } catch (error) {
+      if (error.data?.errors) {
+        setVoterImport((current) => ({ ...current, errors: error.data.errors }));
+      }
+      setNotice(messageFrom(error, "Unable to import voters."));
     } finally {
       setLoading(false);
     }
@@ -615,6 +858,65 @@ export default function UNNDemoAdmin() {
                 <label>Level<select value={voterForm.level} onChange={(event) => setVoterForm({ ...voterForm, level: event.target.value })} required><option value="">Select level</option>{["100L", "200L", "300L", "400L", "500L"].map((level) => <option key={level}>{level}</option>)}</select></label>
                 <button className="unn-primary-button" type="submit" disabled={loading}>Register voter</button>
               </form>
+            </section>
+            <section className="unn-panel">
+              <div className="unn-panel-heading">
+                <div>
+                  <h3>Import Voters from Excel</h3>
+                  <p>Upload an .xlsx workbook, review all records, and confirm before importing.</p>
+                </div>
+                <button className="unn-secondary-button" type="button" onClick={downloadVoterTemplate}>
+                  Download .xlsx template
+                </button>
+              </div>
+              <input
+                ref={voterFileInputRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={readVoterWorkbook}
+                hidden
+              />
+              <button
+                className="unn-primary-button"
+                type="button"
+                onClick={() => voterFileInputRef.current?.click()}
+                disabled={loading}
+              >
+                Import Voters from Excel
+              </button>
+              <p className="unn-muted">
+                Imported voters do not receive a password automatically. Generate a setup code for each voter below; they use it to create their own password.
+              </p>
+              {voterImport.fileName && <p className="unn-muted">Selected file: {voterImport.fileName}</p>}
+              {voterImport.errors.length > 0 && (
+                <ul className="unn-import-errors" role="alert">
+                  {voterImport.errors.map((error, index) => (
+                    <li key={`${error.row ?? "file"}-${index}`}>
+                      {error.row ? `Row ${error.row}: ` : ""}{error.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {voterImport.rows.length > 0 && (
+                <>
+                  <div className="unn-import-preview">
+                    {voterImport.rows.map((voter) => (
+                      <div className="unn-office-row" key={`${voter.row}-${voter.reg_no}`}>
+                        <span>Row {voter.row}: {voter.reg_no || "(missing ID)"} · {voter.name || "(missing name)"}</span>
+                        <strong>{voter.email || "(missing email)"} · {voter.level || "(missing level)"}</strong>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    className="unn-primary-button"
+                    type="button"
+                    onClick={confirmVoterImport}
+                    disabled={loading || voterImport.errors.length > 0}
+                  >
+                    {loading ? "Importing…" : `Import ${voterImport.rows.length} voters`}
+                  </button>
+                </>
+              )}
             </section>
             <section className="unn-panel">
               <div className="unn-panel-heading"><div><h3>Voter directory</h3><p>{voters.length} server records</p></div><input className="unn-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search voters…" /></div>
