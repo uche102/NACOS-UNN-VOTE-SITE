@@ -131,6 +131,8 @@
 .unn-candidate-office { font-size: 10px; font-weight: 800; color: var(--unn-green); }
 .unn-candidate-info h4 { margin: 6px 0; font-size: 13px; }
 .unn-candidate-info p { margin: 0 0 10px; color: var(--unn-muted); font-size: 11px; line-height: 1.6; }
+.unn-import-preview { margin: 16px 0; }
+.unn-import-errors { color: #b42318; font-size: 12px; line-height: 1.6; }
 .unn-notice { padding: 12px 15px; margin-bottom: 16px; border-radius: 8px; background: #e8f6ed; color: #176b4d; font-size: 12px; font-weight: 700; }
 
 @media (max-width: 1050px) {

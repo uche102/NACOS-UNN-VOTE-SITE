@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import "./UNNDemoAdmin.css";
 
@@ -37,6 +37,12 @@ export default function UNNDemoAdmin() {
   const [loading, setLoading] = useState(false);
   const [votersLoading, setVotersLoading] = useState(false);
   const [resultsLoading, setResultsLoading] = useState(false);
+  const [candidateImport, setCandidateImport] = useState({
+    fileName: "",
+    rows: [],
+    errors: [],
+  });
+  const candidateFileInputRef = useRef(null);
 
   const loadCore = useCallback(async () => {
     const [postData, candidateData, statusData] = await Promise.all([
@@ -196,6 +202,193 @@ export default function UNNDemoAdmin() {
       setNotice("Candidate saved.");
     } catch (error) {
       setNotice(messageFrom(error, "Unable to save candidate."));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function downloadCandidateTemplate() {
+    const XLSX = await import("@e965/xlsx");
+    const workbook = XLSX.utils.book_new();
+    const candidatesSheet = XLSX.utils.aoa_to_sheet([
+      ["Full Name", "Position", "Tagline", "Image URL"],
+      [
+        "DEMO ONLY - Alex Example",
+        posts[0]?.title || "Position title from admin",
+        "Demonstration data - delete this row before importing",
+        "",
+      ],
+    ]);
+    const instructionsSheet = XLSX.utils.aoa_to_sheet([
+      ["Candidate Excel Import Instructions"],
+      ["1. Enter one candidate per row in the Candidates sheet."],
+      ["2. Full Name and Position are required."],
+      ["3. Position must match an existing admin position name."],
+      ["4. Tagline and Image URL are optional."],
+      ["5. Delete the DEMO ONLY example row before importing."],
+      ["6. Save the workbook as an Excel .xlsx file."],
+    ]);
+    XLSX.utils.book_append_sheet(workbook, candidatesSheet, "Candidates");
+    XLSX.utils.book_append_sheet(workbook, instructionsSheet, "Instructions");
+    const content = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([content], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "candidate-import-template.xlsx";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function readCandidateWorkbook(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setNotice("");
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setCandidateImport({
+        fileName: file.name,
+        rows: [],
+        errors: [{ row: null, message: "Choose a Microsoft Excel .xlsx file." }],
+      });
+      return;
+    }
+
+    try {
+      const content = await file.arrayBuffer();
+      const signature = new Uint8Array(content, 0, Math.min(content.byteLength, 2));
+      if (signature.length !== 2 || signature[0] !== 0x50 || signature[1] !== 0x4b) {
+        throw new Error("Not an Excel workbook.");
+      }
+      const XLSX = await import("@e965/xlsx");
+      const workbook = XLSX.read(content, { type: "array" });
+      const worksheet = workbook.Sheets.Candidates;
+      if (!worksheet) {
+        setCandidateImport({
+          fileName: file.name,
+          rows: [],
+          errors: [{
+            row: null,
+            message: 'The workbook must contain a worksheet named "Candidates".',
+          }],
+        });
+        return;
+      }
+
+      const sheetRows = XLSX.utils.sheet_to_json(worksheet, {
+        header: 1,
+        raw: true,
+        defval: "",
+        blankrows: true,
+      });
+      const headers = new Map();
+      const errors = [];
+      const allowedHeaders = new Set(["full name", "position", "tagline", "image url"]);
+      (sheetRows[0] || []).forEach((value, index) => {
+        if (value === "") return;
+        if (typeof value !== "string") {
+          errors.push({ row: 1, message: "Column headers must be text." });
+          return;
+        }
+        const header = value.trim().toLowerCase();
+        if (!allowedHeaders.has(header)) {
+          errors.push({ row: 1, message: `Unexpected column "${value}".` });
+        } else if (headers.has(header)) {
+          errors.push({ row: 1, message: `Column "${value}" appears more than once.` });
+        } else {
+          headers.set(header, index);
+        }
+      });
+      ["full name", "position"].forEach((header) => {
+        if (!headers.has(header)) {
+          errors.push({
+            row: 1,
+            message: `Required column "${header === "full name" ? "Full Name" : "Position"}" is missing.`,
+          });
+        }
+      });
+      if (errors.length) {
+        setCandidateImport({ fileName: file.name, rows: [], errors });
+        return;
+      }
+
+      const normalize = (value) => String(value || "").trim().toLowerCase();
+      const postsByName = new Map();
+      posts.forEach((post) => {
+        const key = normalize(post.title);
+        postsByName.set(key, [...(postsByName.get(key) || []), post]);
+      });
+      const existing = new Set(
+        candidates.map((candidate) => `${candidate.post_id}:${normalize(candidate.name)}`),
+      );
+      const seen = new Set();
+      const rows = [];
+      sheetRows.slice(1).forEach((values, index) => {
+        const row = index + 2;
+        if (!values.some((value) => value !== "" && value !== null && value !== undefined)) return;
+        const readText = (header, label) => {
+          const value = values[headers.get(header)] ?? "";
+          if (value === "") return "";
+          if (typeof value !== "string") {
+            errors.push({ row, message: `${label} must contain text.` });
+            return "";
+          }
+          return value.trim();
+        };
+        const name = readText("full name", "Full Name");
+        const position = readText("position", "Position");
+        const tagline = headers.has("tagline") ? readText("tagline", "Tagline") : "";
+        const image_url = headers.has("image url") ? readText("image url", "Image URL") : "";
+        if (!name) errors.push({ row, message: "Full Name is required." });
+        else if (name.toUpperCase().startsWith("DEMO ONLY -")) {
+          errors.push({ row, message: "Remove the demonstration example row before importing." });
+        }
+        if (!position) errors.push({ row, message: "Position is required." });
+        const matchingPosts = postsByName.get(normalize(position)) || [];
+        if (position && matchingPosts.length === 0) {
+          errors.push({ row, message: `Position "${position}" does not exist.` });
+        } else if (matchingPosts.length > 1) {
+          errors.push({ row, message: `Position "${position}" is ambiguous.` });
+        }
+        const post = matchingPosts[0];
+        const key = post ? `${post.id}:${normalize(name)}` : "";
+        if (name && post && existing.has(key)) {
+          errors.push({ row, message: `${name} already exists for ${post.title}.` });
+        } else if (name && post && seen.has(key)) {
+          errors.push({ row, message: `${name} appears more than once for ${post.title} in this workbook.` });
+        }
+        if (key) seen.add(key);
+        rows.push({ row, name, position, tagline, image_url });
+      });
+      if (!rows.length) errors.push({ row: null, message: "The Candidates worksheet contains no candidate rows." });
+      setCandidateImport({ fileName: file.name, rows, errors });
+    } catch {
+      setCandidateImport({
+        fileName: file.name,
+        rows: [],
+        errors: [{ row: null, message: "The selected file is not a valid .xlsx workbook." }],
+      });
+    }
+  }
+
+  async function confirmCandidateImport() {
+    if (!candidateImport.rows.length || candidateImport.errors.length) return;
+    if (!window.confirm(`Import ${candidateImport.rows.length} candidates from ${candidateImport.fileName}?`)) return;
+    setLoading(true);
+    setNotice("");
+    try {
+      const result = await api.importCandidates(candidateImport.rows);
+      await loadCore();
+      setCandidateImport({ fileName: "", rows: [], errors: [] });
+      setNotice(`Imported ${result.imported} candidates.`);
+    } catch (error) {
+      if (error.data?.errors) {
+        setCandidateImport((current) => ({ ...current, errors: error.data.errors }));
+      }
+      setNotice(messageFrom(error, "Unable to import candidates."));
     } finally {
       setLoading(false);
     }
@@ -458,6 +651,62 @@ export default function UNNDemoAdmin() {
                 <button className="unn-primary-button" type="submit" disabled={loading || !posts.length}>Save candidate</button>
                 {candidateForm.id && <button className="unn-secondary-button" type="button" onClick={() => setCandidateForm({ ...EMPTY_CANDIDATE, post_id: posts[0]?.id || "" })}>Cancel edit</button>}
               </form>
+            </section>
+            <section className="unn-panel">
+              <div className="unn-panel-heading">
+                <div>
+                  <h3>Import Candidates from Excel</h3>
+                  <p>Upload an .xlsx workbook, review every row, and confirm before importing.</p>
+                </div>
+                <button className="unn-secondary-button" type="button" onClick={downloadCandidateTemplate}>
+                  Download .xlsx template
+                </button>
+              </div>
+              <input
+                ref={candidateFileInputRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={readCandidateWorkbook}
+                hidden
+              />
+              <button
+                className="unn-primary-button"
+                type="button"
+                onClick={() => candidateFileInputRef.current?.click()}
+                disabled={loading}
+              >
+                Import Candidates from Excel
+              </button>
+              {candidateImport.fileName && <p className="unn-muted">Selected file: {candidateImport.fileName}</p>}
+              {candidateImport.errors.length > 0 && (
+                <ul className="unn-import-errors" role="alert">
+                  {candidateImport.errors.map((error, index) => (
+                    <li key={`${error.row ?? "file"}-${index}`}>
+                      {error.row ? `Row ${error.row}: ` : ""}{error.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {candidateImport.rows.length > 0 && (
+                <>
+                  <div className="unn-import-preview">
+                    {candidateImport.rows.map((candidate) => (
+                      <div className="unn-office-row" key={`${candidate.row}-${candidate.name}`}>
+                        <span>Row {candidate.row}: {candidate.name || "(missing name)"}</span>
+                        <strong>{candidate.position || "(missing position)"}</strong>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    className="unn-primary-button"
+                    type="button"
+                    onClick={confirmCandidateImport}
+                    disabled={loading || candidateImport.errors.length > 0}
+                  >
+                    {loading ? "Importing…" : `Import ${candidateImport.rows.length} candidates`}
+                  </button>
+                </>
+              )}
             </section>
             <section className="unn-panel">
               <div className="unn-panel-heading"><div><h3>Candidate directory</h3><p>{candidates.length} server records</p></div><input className="unn-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search candidates…" /></div>
