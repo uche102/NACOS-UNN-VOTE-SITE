@@ -20,10 +20,10 @@ import {
   Tooltip,
 } from "recharts";
 import Papa from "papaparse";
+import * as XLSX from "@e965/xlsx";
 
 import welcome from "../assets/welcome.jpeg";
 import { api } from "../lib/api";
-import { positionRank } from "../lib/post-order";
 
 const COLORS = [
   "#0f766e",
@@ -85,9 +85,13 @@ export default function Admin() {
   const [candidateForm, setCandidateForm] = useState(emptyCandidate([]));
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [importName, setImportName] = useState("");
+  const [candidateImport, setCandidateImport] = useState({
+    fileName: "",
+    rows: [],
+    errors: [],
+  });
   const chartRefs = useRef({});
-  const fileInputRef = useRef(null);
+  const candidateFileInputRef = useRef(null);
 
   async function login(event) {
     event.preventDefault();
@@ -362,83 +366,283 @@ export default function Admin() {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
-  function handleTemplateDownload() {
-    const rows = [
-      {
-        post: "",
-        name: "",
-        tagline: "",
-        image_url: "",
-        eligible_level: "",
-        display_order: "",
-      },
+  function handleCandidateTemplateDownload() {
+    const workbook = XLSX.utils.book_new();
+    const candidatesSheet = XLSX.utils.aoa_to_sheet([
+      ["Full Name", "Position", "Tagline", "Image URL"],
+      [
+        "DEMO ONLY - Alex Example",
+        posts[0]?.title || "Position title from admin",
+        "Demonstration data - delete this row before importing",
+        "",
+      ],
+    ]);
+    candidatesSheet["!cols"] = [
+      { wch: 30 },
+      { wch: 28 },
+      { wch: 42 },
+      { wch: 40 },
     ];
-    const csv = Papa.unparse(rows, { header: true });
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    triggerDownload(blob, "candidate-import-template.csv");
+    const instructionsSheet = XLSX.utils.aoa_to_sheet([
+      ["Candidate Excel Import Instructions"],
+      ["1. Enter one candidate per row in the Candidates sheet."],
+      ["2. Full Name and Position are required."],
+      ["3. Position must match an existing admin position name."],
+      ["4. Tagline and Image URL are optional."],
+      ["5. Delete the DEMO ONLY example row before importing."],
+      ["6. Save the workbook as an Excel .xlsx file."],
+    ]);
+    instructionsSheet["!cols"] = [{ wch: 76 }];
+    XLSX.utils.book_append_sheet(workbook, candidatesSheet, "Candidates");
+    XLSX.utils.book_append_sheet(workbook, instructionsSheet, "Instructions");
+
+    const content = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([content], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    triggerDownload(blob, "candidate-import-template.xlsx");
   }
 
-  function openImport() {
-    fileInputRef.current?.click();
-  }
-
-  async function handleImportFile(event) {
+  async function handleCandidateImportFile(event) {
     const file = event.target.files?.[0];
+    event.target.value = "";
     if (!file) return;
 
+    setCandidateImport({ fileName: file.name, rows: [], errors: [] });
     setMessage("");
-    setImportName(file.name);
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async (results) => {
-        try {
-          const rows = results.data
-            .map((row) => ({
-              post: String(row.post || row.title || "").trim(),
-              name: String(row.name || "").trim(),
-              tagline: String(row.tagline || "").trim(),
-              image_url: String(row.image_url || row.image || "").trim(),
-              eligible_level: String(
-                row.eligible_level || row.level || "",
-              ).trim(),
-              display_order: Number(row.display_order || row.order || 0),
-              post_order: Number(row.post_order || row.group_order || 0),
-            }))
-            .filter((row) => row.post && row.name)
-            .map((row) => ({
-              ...row,
-              post_order: row.post_order || positionRank({ title: row.post }),
-            }));
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setCandidateImport({
+        fileName: file.name,
+        rows: [],
+        errors: [{ row: null, message: "Choose a Microsoft Excel .xlsx file." }],
+      });
+      return;
+    }
 
-          if (!rows.length) {
-            setMessage(
-              "The file does not contain any valid post/candidate rows.",
-            );
-            return;
-          }
+    try {
+      const content = await file.arrayBuffer();
+      const signature = new Uint8Array(content, 0, Math.min(content.byteLength, 2));
+      if (signature.length !== 2 || signature[0] !== 0x50 || signature[1] !== 0x4b) {
+        throw new Error("The file is not an Excel .xlsx workbook.");
+      }
+      const workbook = XLSX.read(content, { type: "array" });
+      const worksheet = workbook.Sheets.Candidates;
+      if (!worksheet) {
+        setCandidateImport({
+          fileName: file.name,
+          rows: [],
+          errors: [{
+            row: null,
+            message: 'The workbook must contain a worksheet named "Candidates".',
+          }],
+        });
+        return;
+      }
 
-          setLoading(true);
-          await api.resetElection(rows);
-          await loadAdminCoreData();
-          if (activeTab === "results") await loadResults();
-          if (activeTab === "voters") await loadVoters(1);
-          setMessage(
-            `Imported ${rows.length} candidate rows from ${file.name}.`,
-          );
-        } catch (err) {
-          setMessage(err.message);
-        } finally {
-          setLoading(false);
-          event.target.value = "";
+      const sheetRows = XLSX.utils.sheet_to_json(worksheet, {
+        header: 1,
+        raw: true,
+        defval: "",
+        blankrows: true,
+      });
+      const headerRow = sheetRows[0] || [];
+      const allowedHeaders = new Set([
+        "full name",
+        "position",
+        "tagline",
+        "image url",
+      ]);
+      const columns = new Map();
+      const errors = [];
+
+      headerRow.forEach((value, index) => {
+        if (value === "") return;
+        if (typeof value !== "string") {
+          errors.push({
+            row: 1,
+            message: "Column headers must be text.",
+          });
+          return;
         }
-      },
-      error: (err) => {
-        setMessage(err.message);
-        event.target.value = "";
-      },
-    });
+        const header = value.trim().toLowerCase();
+        if (!allowedHeaders.has(header)) {
+          errors.push({
+            row: 1,
+            message: `Unexpected column "${value}". Use Full Name, Position, Tagline, or Image URL.`,
+          });
+          return;
+        }
+        if (columns.has(header)) {
+          errors.push({
+            row: 1,
+            message: `Column "${value}" appears more than once.`,
+          });
+          return;
+        }
+        columns.set(header, index);
+      });
+
+      ["full name", "position"].forEach((header) => {
+        if (!columns.has(header)) {
+          errors.push({
+            row: 1,
+            message: `Required column "${header === "full name" ? "Full Name" : "Position"}" is missing.`,
+          });
+        }
+      });
+
+      if (errors.length) {
+        setCandidateImport({ fileName: file.name, rows: [], errors });
+        return;
+      }
+
+      const normalized = (value) => String(value || "").trim().toLowerCase();
+      const postsByName = new Map();
+      posts.forEach((post) => {
+        const key = normalized(post.title);
+        postsByName.set(key, [...(postsByName.get(key) || []), post]);
+      });
+      const existingCandidates = new Set(
+        candidates.map(
+          (candidate) =>
+            `${candidate.post_id}:${normalized(candidate.name)}`,
+        ),
+      );
+      const seenCandidates = new Set();
+      const previewRows = [];
+
+      sheetRows.slice(1).forEach((values, index) => {
+        const rowNumber = index + 2;
+        if (
+          !values.some(
+            (value) => value !== "" && value !== null && value !== undefined,
+          )
+        ) {
+          return;
+        }
+
+        const readText = (header, label) => {
+          const value = values[columns.get(header)] ?? "";
+          if (value === "") return "";
+          if (typeof value !== "string") {
+            errors.push({
+              row: rowNumber,
+              message: `${label} must contain text.`,
+            });
+            return "";
+          }
+          return value.trim();
+        };
+        const name = readText("full name", "Full Name");
+        const position = readText("position", "Position");
+        const tagline = columns.has("tagline")
+          ? readText("tagline", "Tagline")
+          : "";
+        const imageUrl = columns.has("image url")
+          ? readText("image url", "Image URL")
+          : "";
+
+        if (!name) {
+          errors.push({ row: rowNumber, message: "Full Name is required." });
+        } else if (name.toUpperCase().startsWith("DEMO ONLY -")) {
+          errors.push({
+            row: rowNumber,
+            message: "Remove the demonstration example row before importing.",
+          });
+        }
+        if (!position) {
+          errors.push({ row: rowNumber, message: "Position is required." });
+        }
+
+        const matchingPosts = postsByName.get(normalized(position)) || [];
+        if (position && matchingPosts.length === 0) {
+          errors.push({
+            row: rowNumber,
+            message: `Position "${position}" does not exist.`,
+          });
+        } else if (matchingPosts.length > 1) {
+          errors.push({
+            row: rowNumber,
+            message: `Position "${position}" is ambiguous. Use a unique position name.`,
+          });
+        }
+
+        const post = matchingPosts[0];
+        const key = post ? `${post.id}:${normalized(name)}` : "";
+        if (name && post && existingCandidates.has(key)) {
+          errors.push({
+            row: rowNumber,
+            message: `${name} already exists for ${post.title}.`,
+          });
+        } else if (name && post && seenCandidates.has(key)) {
+          errors.push({
+            row: rowNumber,
+            message: `${name} appears more than once for ${post.title} in this workbook.`,
+          });
+        }
+        if (key) seenCandidates.add(key);
+
+        previewRows.push({
+          row: rowNumber,
+          name,
+          position,
+          tagline,
+          image_url: imageUrl,
+        });
+      });
+
+      if (!previewRows.length) {
+        errors.push({
+          row: null,
+          message: "The Candidates worksheet contains no candidate rows.",
+        });
+      }
+      setCandidateImport({
+        fileName: file.name,
+        rows: previewRows,
+        errors,
+      });
+    } catch {
+      setCandidateImport({
+        fileName: file.name,
+        rows: [],
+        errors: [{
+          row: null,
+          message: "The selected file is not a valid .xlsx workbook.",
+        }],
+      });
+    }
+  }
+
+  async function confirmCandidateImport() {
+    if (!candidateImport.rows.length || candidateImport.errors.length) return;
+    if (
+      !window.confirm(
+        `Import ${candidateImport.rows.length} candidates from ${candidateImport.fileName}?`,
+      )
+    ) {
+      return;
+    }
+
+    setMessage("");
+    try {
+      setLoading(true);
+      const result = await api.importCandidates(candidateImport.rows);
+      await loadAdminCoreData();
+      setCandidateImport({ fileName: "", rows: [], errors: [] });
+      setMessage(`Imported ${result.imported} candidates.`);
+    } catch (err) {
+      if (err.data?.errors) {
+        setCandidateImport((current) => ({
+          ...current,
+          errors: err.data.errors,
+        }));
+      }
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function downloadChart(postId, title) {
@@ -667,20 +871,6 @@ export default function Admin() {
                 <h2>Posts</h2>
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                   <button
-                    className="mini-button"
-                    type="button"
-                    onClick={handleTemplateDownload}
-                  >
-                    Download Template
-                  </button>
-                  <button
-                    className="mini-button"
-                    type="button"
-                    onClick={openImport}
-                  >
-                    Import CSV
-                  </button>
-                  <button
                     className="mini-button danger"
                     type="button"
                     onClick={resetElection}
@@ -689,16 +879,6 @@ export default function Admin() {
                   </button>
                 </div>
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,text/csv"
-                hidden
-                onChange={handleImportFile}
-              />
-              {importName && (
-                <p className="admin-message">Selected file: {importName}</p>
-              )}
               <form className="admin-form" onSubmit={savePost}>
                 <input
                   value={postForm.title}
@@ -816,6 +996,84 @@ export default function Admin() {
                   <Plus size={16} /> Save Candidate
                 </button>
               </form>
+              <div className="candidate-import">
+                <div className="panel-head">
+                  <h3>Import Candidates from Excel</h3>
+                  <button
+                    className="mini-button"
+                    type="button"
+                    onClick={handleCandidateTemplateDownload}
+                  >
+                    Download .xlsx Template
+                  </button>
+                </div>
+                <p className="panel-note">
+                  Upload a .xlsx workbook with Full Name and Position columns.
+                  Review the preview and confirm before importing.
+                </p>
+                <input
+                  ref={candidateFileInputRef}
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={handleCandidateImportFile}
+                  style={{ display: "none" }}
+                />
+                <button
+                  className="mini-button"
+                  type="button"
+                  onClick={() => candidateFileInputRef.current?.click()}
+                  disabled={loading}
+                >
+                  Choose .xlsx File
+                </button>
+                {candidateImport.fileName && (
+                  <p className="panel-note">
+                    Selected file: {candidateImport.fileName}
+                  </p>
+                )}
+                {candidateImport.errors.length > 0 && (
+                  <ul className="error-text" role="alert">
+                    {candidateImport.errors.map((error, index) => (
+                      <li key={`${error.row ?? "file"}-${index}`}>
+                        {error.row ? `Row ${error.row}: ` : ""}
+                        {error.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {candidateImport.rows.length > 0 && (
+                  <>
+                    <div className="table-list">
+                      {candidateImport.rows.map((candidate) => (
+                        <div
+                          className="table-row"
+                          key={`${candidate.row}-${candidate.name}`}
+                        >
+                          <span>
+                            Row {candidate.row}: {candidate.name || "(missing name)"} ·{" "}
+                            {candidate.position || "(missing position)"}
+                            {candidate.tagline ? ` · ${candidate.tagline}` : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={confirmCandidateImport}
+                      disabled={
+                        loading ||
+                        candidateImport.errors.length > 0 ||
+                        !candidateImport.rows.length
+                      }
+                    >
+                      {loading
+                        ? "Importing..."
+                        : `Import ${candidateImport.rows.length} Candidates`}
+                    </button>
+                  </>
+                )}
+              </div>
               <div className="table-list">
                 {candidates.map((candidate) => (
                   <div className="table-row" key={candidate.id}>

@@ -160,6 +160,11 @@ export const api = {
       method: candidate.id ? "PUT" : "POST",
       body: candidate,
     }),
+  importCandidates: (candidates) =>
+    request("/api/admin/candidates", {
+      method: "POST",
+      body: { candidates },
+    }),
   deleteCandidate: (id) =>
     request("/api/admin/candidates", { method: "DELETE", body: { id } }),
   votersVoted: (page = 1, perPage = 10) =>
