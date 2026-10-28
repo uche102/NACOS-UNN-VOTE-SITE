@@ -30,12 +30,6 @@ function normalizeLevel(value) {
     : normalized;
 }
 
-function isHorPost(post) {
-  const title = String(post?.title || "").toLowerCase();
-  return title.includes("hor") ||
-    title.includes("house of rep") ||
-    title.includes("house of representative");
-}
 // handles the canonicalization of selections to ensure that the order of posts and candidates does not affect the comparison of ballots. This is important for verifying that a recovered ballot matches the original submission, regardless of how the selections were ordered in the request.
 function canonicalSelections(selections) {
   return JSON.stringify(
@@ -48,6 +42,12 @@ function canonicalSelections(selections) {
           .sort(),
       ])
       .sort(([a], [b]) => a.localeCompare(b)),
+  );
+}
+
+export function hasMultipleCandidatesForAnyPost(selections) {
+  return Object.values(selections).some((value) =>
+    Array.isArray(value) && value.filter(Boolean).length > 1
   );
 }
 
@@ -72,6 +72,12 @@ export default async function handler(req, res) {
       Array.isArray(selections)
     ) {
       return json(res, 400, { error: "Vote selections are required." });
+    }
+
+    if (hasMultipleCandidatesForAnyPost(selections)) {
+      return json(res, 400, {
+        error: "Please select only one candidate for each post.",
+      });
     }
 
     const voterRecord = voter.level
@@ -121,21 +127,6 @@ export default async function handler(req, res) {
     ) {
       return json(res, 400, {
         error: "Please vote for every post available to your level.",
-      });
-    }
-
-    const exceedsHorLimit = eligiblePosts.some((post) => {
-      if (!isHorPost(post) || voterLevel !== "200L") return false;
-      const value = selections[post.id];
-      const chosen = Array.isArray(value)
-        ? value.filter(Boolean)
-        : value ? [value] : [];
-      return chosen.length > 5;
-    });
-
-    if (exceedsHorLimit) {
-      return json(res, 400, {
-        error: "200 level voters can only select a maximum of 5 HOR candidates.",
       });
     }
 

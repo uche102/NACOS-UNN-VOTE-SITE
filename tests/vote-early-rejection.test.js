@@ -3,7 +3,27 @@ import assert from "node:assert/strict";
 
 process.env.VOTER_SESSION_SECRET = "test-only-secret";
 
-const { default: handler } = await import("../api/vote.js");
+const {
+  default: handler,
+  hasMultipleCandidatesForAnyPost,
+} = await import("../api/vote.js");
+
+test("ballots allow at most one candidate for every post", () => {
+  assert.equal(
+    hasMultipleCandidatesForAnyPost({
+      hor: ["candidate-1", "candidate-2"],
+      president: "candidate-3",
+    }),
+    true,
+  );
+  assert.equal(
+    hasMultipleCandidatesForAnyPost({
+      hor: ["candidate-1"],
+      president: "candidate-3",
+    }),
+    false,
+  );
+});
 
 function mockResponse() {
   return {
