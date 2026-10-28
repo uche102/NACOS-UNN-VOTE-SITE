@@ -273,12 +273,6 @@ export default async function handler(req, res) {
       throw new Error("Transaction is recorded but submission finalization needs recovery.");
     }
 
-    await supabaseRequest("voters", {
-      method: "PATCH",
-      query: { reg_no: `eq.${voter.reg_no}` },
-      body: { ballot_submitted_at: new Date().toISOString() },
-    });
-
     return json(res, 201, {
       message: "Ballot commitment confirmed on the blockchain.",
       transactionHash: blockchain.transactionHash,

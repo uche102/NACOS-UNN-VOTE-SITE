@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 process.env.VOTER_SESSION_SECRET = "test-only-voter-secret";
 process.env.SUPABASE_URL = "https://supabase.test";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "test-only-service-key";
+process.env.BALLOT_ENCRYPTION_KEY = "22".repeat(32);
 
 const { default: handler } = await import("../api/me.js");
 
@@ -65,6 +66,8 @@ test("profile reports a confirmed ballot from ballot submissions", async () => {
     assert.equal(requestedUrls.length, 2);
     assert.equal(requestedUrls[1].pathname.endsWith("/unn_ballot_submissions"), true);
     assert.equal(requestedUrls[1].searchParams.get("status"), "eq.confirmed");
+    assert.equal(requestedUrls[1].searchParams.has("voter_reg_no"), false);
+    assert.ok(requestedUrls[1].searchParams.get("voter_key"));
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -4,7 +4,7 @@
 create table if not exists public.unn_ballot_submissions (
   id uuid primary key default gen_random_uuid(),
   submission_id uuid not null unique default gen_random_uuid(),
-  voter_reg_no text not null references public.unn_voters(reg_no) on delete restrict,
+  voter_key text not null,
   ballot_ciphertext text not null,
   ballot_commitment text not null,
   status text not null default 'pending'
@@ -12,18 +12,12 @@ create table if not exists public.unn_ballot_submissions (
   transaction_hash text unique,
   block_number bigint,
   last_error text,
-  created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  confirmed_at timestamptz,
-  -- One ballot per voter, even after an election reset.
-  unique (voter_reg_no)
+  confirmed_at timestamptz
 );
 
 create index if not exists unn_ballot_submissions_status_idx
   on public.unn_ballot_submissions (status, created_at);
-
-create index if not exists unn_ballot_submissions_created_at_idx
-  on public.unn_ballot_submissions (created_at desc);
 
 alter table public.unn_ballot_submissions enable row level security;
 

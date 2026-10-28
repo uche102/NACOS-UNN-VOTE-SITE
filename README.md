@@ -55,6 +55,7 @@ To start the backend, use `npm run server` after configuring the required enviro
 - The current demonstration administration page does not have authentication.
 - Browser local storage is not a secure database for election records.
 - Blockchain functionality requires a configured RPC endpoint, a separately deployed election contract, and the appropriate environment variables.
+- Supabase stores only a keyed voter pseudonym, not a registration number, with each ballot. The pseudonym is derived from the server-only `BALLOT_ENCRYPTION_KEY`; keep that key stable across deployments. This prevents a database-only reader without the key from directly joining ballots to voters, but does not protect against a backend operator or timing correlation.
 - Backend authentication, voter eligibility checks, database permissions, ballot validation, and end-to-end blockchain verification must be implemented and tested before any real election.
 - Never commit private keys, service-role keys, passwords, or `.env` files to GitHub.
 

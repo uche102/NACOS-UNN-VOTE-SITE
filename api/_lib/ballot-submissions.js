@@ -1,4 +1,5 @@
 import { getSingle, insertRows, supabaseRequest } from "./supabase.js";
+import { createVoterIndex } from "./ballot-crypto.js";
 
 function normalizeSubmission(row) {
   if (!row) return null;
@@ -6,21 +7,20 @@ function normalizeSubmission(row) {
   return {
     id: row.id,
     submissionId: row.submission_id,
-    voterRegNo: row.voter_reg_no,
     ballotCiphertext: row.ballot_ciphertext,
     ballotCommitment: row.ballot_commitment,
     status: row.status,
     transactionHash: row.transaction_hash,
     blockNumber: row.block_number,
     lastError: row.last_error,
-    createdAt: row.created_at,
     confirmedAt: row.confirmed_at,
   };
 }
 
 export async function findSubmissionByVoter(regNo) {
+  const voterKey = createVoterIndex(regNo);
   const row = await getSingle("unn_ballot_submissions", {
-    voter_reg_no: `eq.${regNo}`,
+    voter_key: `eq.${voterKey}`,
     select: "*",
   });
 
@@ -42,10 +42,10 @@ export async function createPendingSubmission({
   ballotCiphertext,
   ballotCommitment,
 }) {
-  // The database constraint allows only one submission per voter.
+  const voterKey = createVoterIndex(voterRegNo);
   const rows = await insertRows("unn_ballot_submissions", [{
     submission_id: submissionId,
-    voter_reg_no: voterRegNo,
+    voter_key: voterKey,
     ballot_ciphertext: ballotCiphertext,
     ballot_commitment: ballotCommitment,
     status: "pending",

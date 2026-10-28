@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 process.env.BALLOT_ENCRYPTION_KEY = randomBytes(32).toString("hex");
 
 const {
+  createVoterIndex,
   createBallotEnvelope,
   decryptBallotEnvelope,
   fingerprintBallot,
@@ -69,4 +70,19 @@ test("selection fingerprints are stable regardless of object key order", () => {
   const second = { "post-b": ["candidate-2"], "post-a": ["candidate-1"] };
 
   assert.equal(fingerprintBallot(first), fingerprintBallot(second));
+});
+
+test("voter indexes are stable and normalize registration number casing", () => {
+  assert.equal(
+    createVoterIndex("NACOS-TEST-001"),
+    createVoterIndex(" nacos-test-001 "),
+  );
+  assert.notEqual(
+    createVoterIndex("NACOS-TEST-001"),
+    createVoterIndex("NACOS-TEST-002"),
+  );
+  assert.doesNotMatch(
+    createVoterIndex("NACOS-TEST-001"),
+    /NACOS-TEST-001/,
+  );
 });

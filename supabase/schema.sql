@@ -18,7 +18,7 @@ create index if not exists unn_voters_ballot_submitted_at_idx on unn_voters (bal
 create table if not exists public.unn_ballot_submissions (
   id uuid primary key default gen_random_uuid(),
   submission_id uuid not null unique default gen_random_uuid(),
-  voter_reg_no text not null references public.unn_voters(reg_no) on delete restrict,
+  voter_key text not null,
   ballot_ciphertext text not null,
   ballot_commitment text not null,
   status text not null default 'pending'
@@ -26,19 +26,52 @@ create table if not exists public.unn_ballot_submissions (
   transaction_hash text unique,
   block_number bigint,
   last_error text,
-  created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  confirmed_at timestamptz,
-  unique (voter_reg_no)
+  confirmed_at timestamptz
 );
 
-create index if not exists unn_ballot_submissions_status_idx
-  on public.unn_ballot_submissions (status, created_at);
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'unn_ballot_submissions'
+      and column_name = 'voter_reg_no'
+  ) then
+    delete from public.unn_ballot_submissions;
 
-create index if not exists unn_ballot_submissions_created_at_idx
-  on public.unn_ballot_submissions (created_at desc);
+    alter table public.unn_ballot_submissions
+      drop constraint if exists unn_ballot_submissions_voter_reg_no_key;
+    alter table public.unn_ballot_submissions
+      drop column voter_reg_no;
+  end if;
+end;
+$$;
+
+alter table public.unn_ballot_submissions
+  add column if not exists voter_key text;
+
+alter table public.unn_ballot_submissions
+  alter column voter_key set not null;
+
+create unique index if not exists unn_ballot_submissions_voter_key_idx
+  on public.unn_ballot_submissions (voter_key);
+
+alter table public.unn_ballot_submissions
+  drop column if exists created_at;
+
+drop index if exists public.unn_ballot_submissions_created_at_idx;
+drop index if exists public.unn_ballot_submissions_status_idx;
+
+create index if not exists unn_ballot_submissions_status_idx
+  on public.unn_ballot_submissions (status, updated_at);
 
 alter table public.unn_ballot_submissions enable row level security;
+
+update public.unn_voters
+set ballot_submitted_at = null
+where ballot_submitted_at is not null;
 
 create or replace function public.claim_unn_ballot_submission(
   p_submission_id uuid

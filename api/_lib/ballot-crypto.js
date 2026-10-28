@@ -3,6 +3,7 @@ import {
   createDecipheriv,
   randomBytes,
   createHash,
+  createHmac,
 } from "node:crypto";
 import { ethers } from "ethers";
 
@@ -16,6 +17,16 @@ function getEncryptionKey() {
   }
 
   return Buffer.from(value, "hex");
+}
+
+export function createVoterIndex(regNo) {
+  if (!regNo) {
+    throw new Error("A voter registration number is required.");
+  }
+
+  return createHmac("sha256", getEncryptionKey())
+    .update(`nacos-unn-ballot-voter:v1:${String(regNo).trim().toUpperCase()}`)
+    .digest("hex");
 }
 
 function canonicalize(selections) {
