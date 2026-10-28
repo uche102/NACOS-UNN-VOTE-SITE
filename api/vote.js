@@ -36,7 +36,7 @@ function isHorPost(post) {
     title.includes("house of rep") ||
     title.includes("house of representative");
 }
-
+// handles the canonicalization of selections to ensure that the order of posts and candidates does not affect the comparison of ballots. This is important for verifying that a recovered ballot matches the original submission, regardless of how the selections were ordered in the request.
 function canonicalSelections(selections) {
   return JSON.stringify(
     Object.entries(selections)
@@ -200,7 +200,7 @@ export default async function handler(req, res) {
           ballotCommitment: envelope.ballotCommitment,
         });
       } catch (error) {
-        // A concurrent request may have created the unique voter submission.
+        // A simultaneous request may have saved this voter's ballot already.
         submission = await findSubmissionByVoter(voter.reg_no);
         if (!submission) throw error;
       }

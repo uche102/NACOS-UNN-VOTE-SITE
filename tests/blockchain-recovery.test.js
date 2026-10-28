@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   recordBallotCommitmentWithDependencies,
+  setBlockchainElectionActiveWithDependencies,
   toBytes32Id,
 } from "../api/_lib/blockchain.js";
 
@@ -167,4 +168,56 @@ test("refuses a non-Sepolia network before broadcasting", async () => {
 
   await assert.rejects(recover(env), /not Sepolia/i);
   assert.equal(env.calls.broadcast, 0);
+});
+
+test("updates on-chain election status and waits for confirmation", async () => {
+  const provider = {
+    getNetwork: async () => ({ chainId: 11155111n }),
+  };
+  let active = false;
+  let calls = 0;
+  const contract = {
+    electionActive: async () => active,
+    setElectionActive: async (value) => {
+      calls++;
+      return {
+        hash: txHash,
+        wait: async () => {
+          active = value;
+          return { status: 1, blockNumber: 43 };
+        },
+      };
+    },
+  };
+
+  const result = await setBlockchainElectionActiveWithDependencies({
+    contract,
+    provider,
+    active: true,
+  });
+
+  assert.equal(result.active, true);
+  assert.equal(result.transactionHash, txHash);
+  assert.equal(result.blockNumber, 43);
+  assert.equal(calls, 1);
+});
+
+test("does not send an election status transaction when already synchronized", async () => {
+  const provider = {
+    getNetwork: async () => ({ chainId: 11155111n }),
+  };
+  const contract = {
+    electionActive: async () => true,
+    setElectionActive: async () => {
+      throw new Error("should not send transaction");
+    },
+  };
+
+  const result = await setBlockchainElectionActiveWithDependencies({
+    contract,
+    provider,
+    active: true,
+  });
+
+  assert.equal(result.alreadySet, true);
 });

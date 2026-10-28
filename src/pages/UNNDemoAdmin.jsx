@@ -212,7 +212,7 @@ export default function UNNDemoAdmin() {
       setLoading(false);
     }
   }
-
+//deals with importing candidates and voters from excel files
   async function downloadCandidateTemplate() {
     const XLSX = await import("@e965/xlsx");
     const workbook = XLSX.utils.book_new();
@@ -707,7 +707,7 @@ export default function UNNDemoAdmin() {
   }
 
   async function resetVotes() {
-    if (!window.confirm("Reset all submitted votes and OTP state? This action cannot be undone.")) return;
+    if (!window.confirm("Reset all submitted votes and voter login state? This action cannot be undone.")) return;
     setLoading(true);
     setNotice("");
     try {

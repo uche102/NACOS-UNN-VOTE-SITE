@@ -59,8 +59,10 @@ export function createBallotEnvelope(submissionId, selections) {
   const salt = randomBytes(32).toString("hex");
   const ballot = canonicalize(selections);
 
+  // This hash checks ballot integrity; it does not hide the votes.
   const ballotCommitment = commitmentFor(submissionId, salt, ballot);
   const iv = randomBytes(12);
+  // Encrypt the ballot. The server holds the key and can read it.
   const cipher = createCipheriv("aes-256-gcm", key, iv);
 
   cipher.setAAD(Buffer.from(String(submissionId)));

@@ -10,6 +10,7 @@ const ABI = [
   "function submissionRecorded(bytes32 submissionId) view returns (bool)",
   "function ballotCommitments(bytes32 submissionId) view returns (bytes32)",
   "function electionActive() view returns (bool)",
+  "function setElectionActive(bool active)",
   "event BallotCommitted(bytes32 indexed submissionId, bytes32 commitment, uint256 timestamp)",
 ];
 
@@ -37,6 +38,62 @@ function getContract() {
 export function toBytes32Id(value) {
   return ethers.keccak256(ethers.toUtf8Bytes(String(value)));
 }
+
+export async function setBlockchainElectionActiveWithDependencies({
+  contract,
+  provider,
+  active,
+}) {
+  if (typeof active !== "boolean") {
+    throw new Error("Election active status must be true or false.");
+  }
+
+  if (!contract || !provider) {
+    throw new Error("A contract and provider are required.");
+  }
+
+  const { chainId } = await provider.getNetwork();
+  if (chainId !== 11155111n) {
+    throw new Error("Refusing to update: blockchain network is not Sepolia.");
+  }
+
+  if (await contract.electionActive() === active) {
+    return { active, alreadySet: true };
+  }
+
+  const tx = await contract.setElectionActive(active);
+  const receipt = await tx.wait();
+
+  if (!receipt || receipt.status !== 1) {
+    throw new Error(
+      `Blockchain election status transaction ${tx.hash} was not confirmed successfully.`
+    );
+  }
+
+  if (await contract.electionActive() !== active) {
+    throw new Error(
+      `Blockchain election status did not change after transaction ${tx.hash}.`
+    );
+  }
+
+  return {
+    active,
+    alreadySet: false,
+    transactionHash: tx.hash,
+    blockNumber: receipt.blockNumber,
+  };
+}
+
+export async function setBlockchainElectionActive(active) {
+  const contract = getContract();
+
+  return setBlockchainElectionActiveWithDependencies({
+    contract,
+    provider: contract.runner.provider,
+    active,
+  });
+}
+
 async function findRecordedTransaction(contract, submissionId, commitment) {
   const filter = contract.filters.BallotCommitted(submissionId);
   const events = await contract.queryFilter(filter, 0, "latest");

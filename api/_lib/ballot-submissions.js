@@ -42,6 +42,7 @@ export async function createPendingSubmission({
   ballotCiphertext,
   ballotCommitment,
 }) {
+  // The database constraint allows only one submission per voter.
   const rows = await insertRows("unn_ballot_submissions", [{
     submission_id: submissionId,
     voter_reg_no: voterRegNo,

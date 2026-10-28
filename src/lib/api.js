@@ -106,13 +106,6 @@ export const api = {
       method: "POST",
       body: { reg_no: regNo, password },
     }),
-  requestOtp: (regNo) =>
-    request("/api/request-otp", { method: "POST", body: { reg_no: regNo } }),
-  verifyOtp: (regNo, otp) =>
-    request("/api/verify-otp", {
-      method: "POST",
-      body: { reg_no: regNo, otp },
-    }),
   me: () => request("/api/me"),
   election: () => request("/api/election"),
   vote: (selections) =>

@@ -34,7 +34,7 @@ export function positionRank(post) {
 
   return 1000;
 }
-
+//handles the case where the post title does not match any known positions and assigns it a default rank of 1000
 export function inferEligibleLevel(post) {
   const title = normalizedTitle(post);
   const match = title.match(/\b(200|300|400|500)\s*(l|level)\b/);

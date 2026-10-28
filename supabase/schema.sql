@@ -9,16 +9,39 @@ create table if not exists unn_voters (
   created_at timestamptz not null default now()
 );
 
-alter table unn_voters add column if not exists otp_claimed_at timestamptz;
 alter table unn_voters add column if not exists otp_verified_at timestamptz;
 alter table unn_voters add column if not exists ballot_submitted_at timestamptz;
 
-create index if not exists unn_voters_otp_claimed_at_idx on unn_voters (otp_claimed_at);
+create index if not exists unn_voters_ballot_submitted_at_idx on unn_voters (ballot_submitted_at);
 
--- Atomically enforce OTP resend cooldown per voter.
-create or replace function public.claim_unn_otp_request(
-  p_reg_no text,
-  p_cooldown_seconds integer default 60
+-- Ballots remain encrypted off-chain; only their commitments are recorded on-chain.
+create table if not exists public.unn_ballot_submissions (
+  id uuid primary key default gen_random_uuid(),
+  submission_id uuid not null unique default gen_random_uuid(),
+  voter_reg_no text not null references public.unn_voters(reg_no) on delete restrict,
+  ballot_ciphertext text not null,
+  ballot_commitment text not null,
+  status text not null default 'pending'
+    check (status in ('pending', 'submitted', 'confirmed', 'failed')),
+  transaction_hash text unique,
+  block_number bigint,
+  last_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  confirmed_at timestamptz,
+  unique (voter_reg_no)
+);
+
+create index if not exists unn_ballot_submissions_status_idx
+  on public.unn_ballot_submissions (status, created_at);
+
+create index if not exists unn_ballot_submissions_created_at_idx
+  on public.unn_ballot_submissions (created_at desc);
+
+alter table public.unn_ballot_submissions enable row level security;
+
+create or replace function public.claim_unn_ballot_submission(
+  p_submission_id uuid
 )
 returns boolean
 language plpgsql
@@ -26,48 +49,102 @@ security definer
 set search_path = public
 as $$
 declare
-  previous_claim timestamptz;
+  claimed_count integer;
 begin
-  select otp_claimed_at
-    into previous_claim
-    from public.unn_voters
-    where reg_no = p_reg_no
-    for update;
+  update public.unn_ballot_submissions
+  set status = 'submitted',
+      updated_at = now()
+  where submission_id = p_submission_id
+    and status = 'pending';
 
-  if not found then
-    return false;
-  end if;
-
-  if previous_claim is not null
-     and previous_claim > now() - make_interval(secs => greatest(p_cooldown_seconds, 0)) then
-    return false;
-  end if;
-
-  update public.unn_voters
-     set otp_claimed_at = now()
-   where reg_no = p_reg_no;
-
-  return true;
+  get diagnostics claimed_count = row_count;
+  return claimed_count = 1;
 end;
 $$;
 
-revoke all on function public.claim_unn_otp_request(text, integer) from public, anon, authenticated;
-grant execute on function public.claim_unn_otp_request(text, integer) to service_role;
+revoke all on function public.claim_unn_ballot_submission(uuid) from public;
+revoke all on function public.claim_unn_ballot_submission(uuid) from anon;
+revoke all on function public.claim_unn_ballot_submission(uuid) from authenticated;
+grant execute on function public.claim_unn_ballot_submission(uuid) to service_role;
 
-create index if not exists unn_voters_ballot_submitted_at_idx on unn_voters (ballot_submitted_at);
+create or replace function public.record_unn_ballot_transaction(
+  p_submission_id uuid,
+  p_commitment text,
+  p_transaction_hash text
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  updated_count integer;
+begin
+  update public.unn_ballot_submissions
+  set transaction_hash = p_transaction_hash,
+      status = 'submitted',
+      updated_at = now(),
+      last_error = null
+  where submission_id = p_submission_id
+    and lower(ballot_commitment) = lower(p_commitment)
+    and status in ('pending', 'submitted')
+    and (
+      transaction_hash is null
+      or transaction_hash = p_transaction_hash
+    );
 
-create table if not exists unn_otp_codes (
-  id uuid primary key default gen_random_uuid(),
-  reg_no text not null references unn_voters(reg_no) on delete cascade,
-  code_hash text not null,
-  expires_at timestamptz not null,
-  attempts integer not null default 0,
-  used_at timestamptz,
-  created_at timestamptz not null default now()
-);
+  get diagnostics updated_count = row_count;
+  return updated_count = 1;
+end;
+$$;
 
-create index if not exists unn_otp_codes_reg_no_idx on unn_otp_codes (reg_no);
-create index if not exists unn_otp_codes_created_at_idx on unn_otp_codes (created_at desc);
+revoke all on function public.record_unn_ballot_transaction(uuid, text, text) from public;
+revoke all on function public.record_unn_ballot_transaction(uuid, text, text) from anon;
+revoke all on function public.record_unn_ballot_transaction(uuid, text, text) from authenticated;
+grant execute on function public.record_unn_ballot_transaction(uuid, text, text) to service_role;
+
+create or replace function public.finalize_unn_ballot_submission(
+  p_submission_id uuid,
+  p_commitment text,
+  p_transaction_hash text,
+  p_block_number bigint
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  finalized_count integer;
+begin
+  update public.unn_ballot_submissions
+  set status = 'confirmed',
+      transaction_hash = p_transaction_hash,
+      block_number = p_block_number,
+      confirmed_at = coalesce(confirmed_at, now()),
+      updated_at = now(),
+      last_error = null
+  where submission_id = p_submission_id
+    and lower(ballot_commitment) = lower(p_commitment)
+    and status in ('pending', 'submitted', 'confirmed')
+    and (
+      transaction_hash is null
+      or transaction_hash = p_transaction_hash
+    )
+    and (
+      block_number is null
+      or block_number = p_block_number
+    );
+
+  get diagnostics finalized_count = row_count;
+  return finalized_count = 1;
+end;
+$$;
+
+revoke all on function public.finalize_unn_ballot_submission(uuid, text, text, bigint) from public;
+revoke all on function public.finalize_unn_ballot_submission(uuid, text, text, bigint) from anon;
+revoke all on function public.finalize_unn_ballot_submission(uuid, text, text, bigint) from authenticated;
+grant execute on function public.finalize_unn_ballot_submission(uuid, text, text, bigint) to service_role;
 
 create table if not exists unn_posts (
   id uuid primary key default gen_random_uuid(),
@@ -141,7 +218,6 @@ where p.is_active = true and c.is_active = true
 group by p.id, p.title, p.eligible_level, p.display_order, c.id, c.name, c.display_order;
 
 alter table unn_voters enable row level security;
-alter table unn_otp_codes enable row level security;
 alter table unn_posts enable row level security;
 alter table unn_candidates enable row level security;
 alter table unn_votes enable row level security;

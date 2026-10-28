@@ -3,7 +3,6 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const TABLES = {
   voters: "unn_voters",
-  otp_codes: "unn_otp_codes",
   posts: "unn_posts",
   candidates: "unn_candidates",
   votes: "unn_votes",
@@ -74,17 +73,4 @@ export async function insertRows(path, rows, mergeDuplicates = "") {
     query,
     headers,
   });
-}
-
-
-export async function claimOtpRequest(regNo, cooldownSeconds = 60) {
-  const result = await supabaseRequest("rpc/claim_unn_otp_request", {
-    method: "POST",
-    body: {
-      p_reg_no: regNo,
-      p_cooldown_seconds: cooldownSeconds,
-    },
-  });
-
-  return result === true;
 }

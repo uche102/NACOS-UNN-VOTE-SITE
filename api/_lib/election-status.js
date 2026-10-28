@@ -1,4 +1,5 @@
 import { supabaseRequest } from "./supabase.js";
+import { setBlockchainElectionActive } from "./blockchain.js";
 
 const CONTROL_PREFIX = "__NACOS_UNN_ELECTION_CONTROL__:";
 const CONTROL_ORDER = -999999;
@@ -40,31 +41,51 @@ export async function getElectionStatus() {
 }
 
 export async function setElectionStatus(votingOpen) {
-  const existing = await supabaseRequest("posts", {
-    query: {
-      select: "id",
-      title: `like.${CONTROL_PREFIX}%`,
-      order: "created_at.desc",
-    },
-  });
+  const previous = await getElectionStatus();
 
-  if (existing.length) {
-    await supabaseRequest("posts", {
-      method: "DELETE",
-      query: { id: `in.(${existing.map((row) => row.id).join(",")})` },
+  async function persistStatus(value) {
+    const existing = await supabaseRequest("posts", {
+      query: {
+        select: "id",
+        title: `like.${CONTROL_PREFIX}%`,
+        order: "created_at.desc",
+      },
     });
+
+    if (existing.length) {
+      await supabaseRequest("posts", {
+        method: "DELETE",
+        query: { id: `in.(${existing.map((row) => row.id).join(",")})` },
+      });
+    }
+
+    const [settings] = await supabaseRequest("posts", {
+      method: "POST",
+      body: [
+        {
+          title: `${CONTROL_PREFIX}${value ? "OPEN" : "CLOSED"}`,
+          display_order: CONTROL_ORDER,
+          is_active: false,
+        },
+      ],
+    });
+
+    return toStatus(settings);
   }
 
-  const [settings] = await supabaseRequest("posts", {
-    method: "POST",
-    body: [
-      {
-        title: `${CONTROL_PREFIX}${votingOpen ? "OPEN" : "CLOSED"}`,
-        display_order: CONTROL_ORDER,
-        is_active: false,
-      },
-    ],
-  });
+  await setBlockchainElectionActive(votingOpen);
 
-  return toStatus(settings);
+  try {
+    return await persistStatus(votingOpen);
+  } catch (error) {
+    try {
+      await persistStatus(previous.votingOpen);
+      await setBlockchainElectionActive(previous.votingOpen);
+    } catch (rollbackError) {
+      throw new Error(
+        `Election status update failed (${error.message}); rollback failed (${rollbackError.message}).`
+      );
+    }
+    throw error;
+  }
 }

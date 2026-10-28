@@ -311,7 +311,7 @@ export default function Admin() {
   async function resetVotes() {
     if (
       !window.confirm(
-        "Reset all votes? Posts and candidates will stay, but all submitted votes and OTP state will be cleared.",
+        "Reset all votes? Posts and candidates will stay, but all voter login state and submitted votes will be cleared.",
       )
     ) {
       return;
@@ -822,8 +822,8 @@ export default function Admin() {
                   <h2>Election Control</h2>
                   <p className="panel-note">
                     {electionStatus.votingOpen
-                      ? "Voters can request OTPs and submit ballots."
-                      : "Voters cannot request OTPs or submit ballots."}
+                      ? "Voters can log in and submit ballots."
+                      : "Voters cannot log in or submit ballots."}
                   </p>
                 </div>
                 <span

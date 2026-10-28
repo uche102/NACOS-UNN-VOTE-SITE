@@ -31,6 +31,7 @@ function validateVoter({ reg_no, name, email, level }) {
 async function getAllVoterIdentifiers() {
   const pageSize = 1000;
   const identifiers = [];
+  // Read every page so imports can detect duplicates across the full voter list.
   for (let offset = 0; ; offset += pageSize) {
     const page = await supabaseRequest("voters", {
       query: {
@@ -82,6 +83,7 @@ export default async function handler(req, res) {
       const rowsToInsert = [];
       const errors = [];
 
+      // Validate the whole batch before inserting so one bad row rejects the import.
       body.voters.forEach((row, index) => {
         const rowNumber =
           Number.isInteger(row?.row) && row.row >= 2 ? row.row : index + 2;

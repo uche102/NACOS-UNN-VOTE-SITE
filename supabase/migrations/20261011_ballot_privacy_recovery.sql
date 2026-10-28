@@ -15,6 +15,7 @@ create table if not exists public.unn_ballot_submissions (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   confirmed_at timestamptz,
+  -- One ballot per voter, even after an election reset.
   unique (voter_reg_no)
 );
 

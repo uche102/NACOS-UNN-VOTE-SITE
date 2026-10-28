@@ -13,26 +13,21 @@ export default async function handler(req, res) {
     const { items = [] } = await readBody(req);
     const resetVotesOnly = items === "votes-only" || items?.resetVotesOnly === true;
     const votes = await supabaseRequest("votes", { query: { select: "id" } });
-    const otpCodes = await supabaseRequest("otp_codes", { query: { select: "id" } });
     const voters = await supabaseRequest("voters", {
       query: {
         select: "reg_no",
-        or: "(otp_claimed_at.not.is.null,otp_verified_at.not.is.null,ballot_submitted_at.not.is.null)",
+        or: "(otp_verified_at.not.is.null,ballot_submitted_at.not.is.null)",
       },
     });
 
     if (votes.length) {
       await supabaseRequest("votes", { method: "DELETE", query: { id: `in.(${votes.map((row) => row.id).join(",")})` } });
     }
-    if (otpCodes.length) {
-      await supabaseRequest("otp_codes", { method: "DELETE", query: { id: `in.(${otpCodes.map((row) => row.id).join(",")})` } });
-    }
     if (voters.length) {
       await supabaseRequest("voters", {
         method: "PATCH",
         query: { reg_no: `in.(${voters.map((row) => row.reg_no).join(",")})` },
         body: {
-          otp_claimed_at: null,
           otp_verified_at: null,
           ballot_submitted_at: null,
         },

@@ -3,7 +3,7 @@ import { getBearerToken, getCookie, json, setCookie } from "./http.js";
 
 const VOTER_COOKIE = "nacos_unn_voter";
 const ADMIN_COOKIE = "nacos_unn_admin";
-
+//handles the signing of payloads for voter and admin sessions, ensuring that the data is securely encoded and can be verified later. The signature is generated using HMAC with SHA-256, providing integrity and authenticity for the session tokens.
 function signPayload(payload, secret) {
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = crypto
@@ -12,7 +12,7 @@ function signPayload(payload, secret) {
     .digest("base64url");
   return `${encoded}.${signature}`;
 }
-
+//verifies the authenticity and integrity of a given token by checking its signature against the expected value derived from the payload and secret. It also checks for expiration, ensuring that only valid and timely tokens are accepted for session management.
 function verifyToken(token, secret) {
   if (!token || !secret || !token.includes(".")) return null;
   const [encoded, signature] = token.split(".");

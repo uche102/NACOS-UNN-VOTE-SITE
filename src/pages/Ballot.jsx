@@ -321,6 +321,7 @@ export default function Ballot() {
         {error && <p className="error-text">{error}</p>}
         <div className="sticky-action">
           <button
+            type="button"
             className="primary-button"
             disabled={!canSubmit || submitting}
             onClick={submitVote}
